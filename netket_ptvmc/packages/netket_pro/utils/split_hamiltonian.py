@@ -1,27 +1,18 @@
 import numpy as np
-import scipy.sparse as sp
 
 from netket.operator import LocalOperator
-from netket.utils.types import Array
-from typing import Union
 
 
-def _split_hamiltonian(H: Union[Array, LocalOperator]):
-    if isinstance(H, Array):
-        return _split_hamiltonian_dense(H)
-    elif isinstance(H, LocalOperator):
-        return _split_hamiltonian_netket(H)
-    else:
-        raise ValueError("Unknown type")
+def split_hamiltonian(H: LocalOperator) -> tuple[LocalOperator, LocalOperator]:
+    r"""
+    Splits a Hamiltonian into a diagonal and off-diagonal part.
 
+    Args:
+        H: The Hamiltonian to split.
 
-def _split_hamiltonian_dense(H: Array):
-    H_diag = sp.diags(H.diagonal())
-    H_offdiag = H - H_diag
-    return H_diag, H_offdiag
-
-
-def _split_hamiltonian_netket(H: LocalOperator):
+    Returns:
+        A tuple containing the diagonal and off-diagonal parts of the Hamiltonian.
+    """
     hi = H.hilbert
     H_diag = LocalOperator(hi, dtype=H.dtype)
     H_offdiag = LocalOperator(hi, dtype=H.dtype)
