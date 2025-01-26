@@ -105,6 +105,9 @@ class InfidelityCompression(AbstractStateCompression):
         self._build_parameters = build_parameters
         self._run_parameters = run_parameters
 
+        if "n_iter" not in run_parameters:
+            raise RuntimeError("Must specify the `n_iter` run parameter.")
+
     @property
     def build_parameters(self) -> PyTree:
         """Get the compression parameters."""

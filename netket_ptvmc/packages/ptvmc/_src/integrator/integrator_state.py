@@ -131,7 +131,7 @@ class IntegratorState(struct.Pytree):
         # #    raise TypeError(f"flags must be SolverFlags but got {type(flags)} : {flag}")
         # self.flags = flags
 
-        self.solver_state = solver._init_state()
+        self.solver_state = solver.init_state()
 
     # def __repr__(self) -> str:
     #     try:

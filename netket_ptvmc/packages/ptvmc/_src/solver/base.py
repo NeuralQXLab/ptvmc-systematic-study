@@ -22,9 +22,58 @@ StepReturnT = tuple[VariationalState, AbstractDiscretizationState, list[dict]]
 class AbstractDiscretization(struct.Pytree):
     r"""
     Abstract base class for PTVMC solvers.
+
+    The solvers implement the following methods:
+
+    - :meth:`~ptvmc._src.solver.base.AbstractDiscretization.get_substep`
+    - :meth:`~ptvmc._src.solver.base.AbstractDiscretization.finish_substep`
+    - :meth:`~ptvmc._src.solver.base.AbstractDiscretization.finish_step`
+    - :meth:`~ptvmc._src.solver.base.AbstractDiscretization.reset`
+
+    Which are called inside of a discretization step as follows:
+
+    .. code-block:: python
+
+        # Loop until we reach the total number of steps. The reason we use a while
+        # is to be able to step individually
+        while True:
+            # Get substep should prepare what is needed to do a compression.
+            _vstate, _tstate, _U, _V = solver.get_substep(
+                self.generator, actual_dt, state.t, current_vstate, solver_state
+            )
+
+            compression_result, compression_state, info = (
+                compression_algorithm.init_and_execute(
+                    vstate=_vstate,
+                    tstate=_tstate,
+                    U=_U,
+                    V=_V,
+                )
+            )
+
+            infos = history.accum_histories_in_tree(
+                infos, info, step=solver_state.stage
+            )
+
+            # This can be used to postprocesss the output of a compression step
+            current_vstate, solver_state = self.solver.finish_substep(
+                self.generator, actual_dt, state.t, compression_result, solver_state
+            )
+
+            if solver_state.stage == self.solver.stages:
+                # this can be used to add some final postprocessing after all steps are done
+                current_vstate = self.solver.finish_step(
+                    self.generator, actual_dt, state.t, compression_result, solver_state
+                )
+                break
+
+        # this should at least reset the solver state
+        solver_state = self.solver.reset(solver_state)
+
+
     """
 
-    def _init_state(self, generator, t, dt) -> AbstractDiscretizationState:
+    def init_state(self, generator, t, dt) -> AbstractDiscretizationState:
         r"""
         Initializes the `DiscretizationState` structure containing supplementary information needed.
 
@@ -33,7 +82,6 @@ class AbstractDiscretization(struct.Pytree):
         """
         return AbstractDiscretizationState()
 
-    # def step(self, vstate, H, dt):
     def step(
         self,
         generator: Union[Callable, AbstractOperator],
@@ -122,4 +170,17 @@ class AbstractDiscretization(struct.Pytree):
         """
         Updates the solver state after a substep has been completed.
         """
-        raise NotImplementedError
+        return compression_result, solver_state.replace(stage=solver_state.stage + 1)
+
+    def finish_step(
+        self,
+        generator: AbstractOperator,
+        dt: float,
+        t: float,
+        compression_result: VariationalState,
+        solver_state: AbstractDiscretizationState,
+    ) -> VariationalState:
+        """
+        Final modifications to the solver state after all substeps have been completed.
+        """
+        return compression_result

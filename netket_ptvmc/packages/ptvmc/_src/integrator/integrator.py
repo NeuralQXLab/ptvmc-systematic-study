@@ -253,6 +253,9 @@ class Integrator(struct.Pytree, mutable=True):
                 self.generator, actual_dt, state.t, compression_result, solver_state
             )
             if solver_state.stage == self.solver.stages:
+                current_vstate = self.solver.finish_step(
+                    self.generator, actual_dt, state.t, compression_result, solver_state
+                )
                 break
 
         solver_state = self.solver.reset(solver_state)

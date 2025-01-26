@@ -26,12 +26,14 @@ lpe_docs = r"""
 
     .. math::
 
-        e^{dt G} = \prod_{i=1}^{s} (1 + a_i dt G)
+        e^{dt \hat{G}} = \prod_{i=1}^{s} (1 + a_i dt \hat{G})
 
     where :math:`a_i` are the complex coefficients and :math:`s` is the number of stages,
     corresponding to the order of the truncation.
 
-    At every stage, one compression is performed.
+    At every stage, one compression is performed with :math:`U=(1 + a_i dt \hat{G})` and :math:`V=1`.
+
+    This method was introduced by Gravina et al. in `ArXiV:24.10720 <https://arxiv.org/abs/2410.10720>`_ .
 """
 
 

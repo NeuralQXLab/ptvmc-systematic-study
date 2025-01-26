@@ -12,12 +12,15 @@ slpe_docs = r"""
 
     .. math::
 
-        e^{dt G} = \prod_{i=1}^{s} (1 + a_i dt \hat{X}) e^{c_i dt \hat{Z}}
+        e^{dt\hat{G}} = \prod_{i=1}^{s} (1 + a_i dt \hat{X}) e^{c_i dt \hat{Z}}
 
     where :math:`a_i` and :math:`c_i` are the complex coefficients. The number of stages :math:`s`
     is monotonically increasing in the order of the truncation.
 
-    At every stage, one compression is performed.
+    At every stage, one exact application of the diagonal gates is performed, and is followed by a
+    compression performed with :math:`U=(1 + a_i dt \hat{X})` and :math:`V=1`.
+
+    This method was introduced by Gravina et al. in `ArXiV:24.10720 <https://arxiv.org/abs/2410.10720>`_ .
 """
 
 
@@ -26,16 +29,16 @@ class SLPE(AbstractSPE):
     _a: jnp.ndarray = struct.field(pytree_node=True, serialize=False)
     _c: jnp.ndarray = struct.field(pytree_node=True, serialize=False)
 
-    def __init__(self, x_coeffs, z_coeffs):
+    def __init__(self, xcoeffs, zcoeffs):
         r"""
         Initializes the SLPE class with the given coefficients.
 
         Args:
-            x_coeffs: The coefficients of the off-diagonal part of the linear product expansion.
-            z_coeffs: The coefficients of the diagonal part of the linear product expansion.
+            xcoeffs: The coefficients of the off-diagonal part of the linear product expansion.
+            zcoeffs: The coefficients of the diagonal part of the linear product expansion.
         """
-        self._a = x_coeffs
-        self._c = z_coeffs
+        self._a = xcoeffs
+        self._c = zcoeffs
 
     @property
     def coefficients(self):

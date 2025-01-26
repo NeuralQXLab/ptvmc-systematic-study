@@ -5,7 +5,7 @@ from netket.operator import AbstractOperator
 from netket.utils import struct
 from netket.vqs import VariationalState
 
-from netket_pro.utils import split_hamiltonian as split_generator
+from netket_pro.utils.split_hamiltonian import split_hamiltonian as split_generator
 
 from ptvmc._src.solver.base import (
     AbstractDiscretization,
@@ -44,7 +44,7 @@ class AbstractPE(AbstractDiscretization):
     def stages(self):
         return len(self.coefficients)
 
-    def _init_state(self) -> ProductExpansionState:
+    def init_state(self) -> ProductExpansionState:
         r"""
         Initializes the `DiscretizationState` structure containing supplementary information needed.
 
@@ -82,16 +82,6 @@ class AbstractPE(AbstractDiscretization):
 
         return vstate, tstate, U, V
 
-    def finish_substep(
-        self,
-        generator: AbstractOperator,
-        dt: float,
-        t: float,
-        compression_result: VariationalState,
-        solver_state: ProductExpansionState,
-    ) -> tuple[VariationalState, ProductExpansionState]:
-        return compression_result, solver_state.replace(stage=solver_state.stage + 1)
-
 
 class AbstractSPE(AbstractDiscretization):
     @property
@@ -106,7 +96,7 @@ class AbstractSPE(AbstractDiscretization):
     def stages(self):
         return len(self.coefficients)
 
-    def _init_state(self) -> ProductExpansionState:
+    def init_state(self) -> ProductExpansionState:
         r"""
         Initializes the `DiscretizationState` structure containing supplementary information needed.
 
@@ -155,13 +145,3 @@ class AbstractSPE(AbstractDiscretization):
             V = 1 + b * X * dt
 
         return vstate, tstate, U, V
-
-    def finish_substep(
-        self,
-        generator: AbstractOperator,
-        dt: float,
-        t: float,
-        compression_result: VariationalState,
-        solver_state: ProductExpansionState,
-    ) -> tuple[VariationalState, ProductExpansionState]:
-        return compression_result, solver_state.replace(stage=solver_state.stage + 1)
