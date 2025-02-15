@@ -130,11 +130,76 @@ driver.run(n_iter=100, out=logger, callback=autotune_cb)
 ```
 
 ## Performing the time evolution
-In this package we provide a modular structure allowing to easily perform any of the task discussed above independently or in combination. 
+In the sections above we showed how to easily perform infidelity optimizations for arbitraty choices of $\hat U$ and $\hat V$. 
+We have also detailed how a single time-step can be performed by concatenating a sequence of such optimizations for appropriate choices of $\hat U_k$ and $\hat V_k$. 
+In this package we provide a modular structure disentangling single optimizations, sequences of optimizations, and the full time evolution (sequence of sequences). The structure is as follows:
 
-As seen above, the `InfidelityOptimizerNG` driver can be used to easily perform  
 
+So ultimately the code to perform the time evolution of the system is as simple as:
 
+- Define physical model and variational ansatz
+
+- Define a concretization of the `AbstractStateCompression` class specifying how the single state compression is performed.\
+For the case of infidelity optimization a concretization of the abstract class is already provided in [`InfidelityCompression`](ptvmc/_src/compression/infidelity.py).\
+To use it, one simply does
+    ```python
+    compression_alg = ptvmc.compression.InfidelityCompression(
+        driver_class=advd.driver.InfidelityOptimizerNG,
+        build_parameters={
+            "diag_shift": 1e-6,
+            "optimizer": optax.inject_hyperparams(optax.sgd)(learning_rate=0.05),
+            "linear_solver_fn": cholesky,
+            "proj_reg": None,
+            "momentum": None,
+            "chunk_size_bwd": None,
+            "collect_quadratic_model": True,
+            "use_ntk": False,
+            "cv_coeff": -0.5,
+            "resample_fraction": None,
+            "estimator": "cmc",
+        },
+        run_parameters={
+            "n_iter": 100,
+            "callback": [
+                PI_controller_diagshift(
+                    target=0.75,
+                    safety_fac=0.9,
+                    clip_min=0.5,
+                    clip_max=2,
+                    diag_shift_min=1e-11,
+                    diag_shift_max=0.1,
+                    order=2,
+                    beta_1=1,
+                    beta_2=0.1,
+                )
+            ],
+        },
+    )
+    ```
+- Once the compression algorithm is defined, the sequence of compressions making up a physical timestep has to be defined.\
+We have already provided a concretization of the general `AbstractDiscretization` class realizing the product expansions detailed above. They can be simply called as
+    ```python
+    solver = ptvmc.solver.SPPE3()
+    ```
+    These solvers allow looping over the sequence of compressions defining a physical timestep. 
+    The single timestep can be performed by calling the `step` method of the `Integrator` class which takes as input the compression algorithm, and the solver. 
+
+- To perform the full time evolution, the solver and the compression algorithm are passed to the [PTVMCDriver](ptvmc/_src/driver/ptvmc_driver.py) driver which takes care of the full time evolution. The driver is called as
+    ```python
+    integration_params = ptvmc.IntegrationParameters(dt=dt)
+    
+    generator = -1j * H
+    
+    driver = ptvmc.PTVMCDriver(
+        generator,
+        0.0,
+        solver=solver,
+        integration_params=integration_params,
+        compression_algorithm=compression_alg,
+        variational_state=vs,
+    )
+    ```
+    where `H` is the Hamiltonian of the system, `dt` is the time step, and `vs` is initial variational state.
 <!-- Repository for material accompanying the ptvmc systematic study paper
 
 - `ProductExamples/` directory containing the material discussing Section 2 of the paper, showing the accuracy of the various integration schemes.
