@@ -22,9 +22,9 @@ $
 \ket{\psi(t+\text{d}t)} = e^{-i \hat H \text{d}t} \ket{\psi(t)},
 $
 where $\hat H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
-$$
+```math
 \theta(t+\text{d} t) = \underset{\theta}{\text{argmin}}\,\, \mathcal{L}\left(\ket{\psi_\theta}, e^{-i \hat H \text{d} t} \ket{\psi_{\theta(t)}}\right),
-$$
+```
 where $\mathcal{L}$ is a suitable loss function quantifying the discrepancy between two quantum states. This is the starting point for the p-tVMC method. 
 
 A practical implementation of the method requires a careful analysis of two aspects: (i) an efficient approximation of the evolutor $e^{-i \hat H \text{d} t}$, and (ii) a reliable way of driving the optimizations to convergence. The paper [Neural Projected Quantum Dynamics: a systematic study](https://arxiv.org/abs/2410.10720) addresses these two aspects by proposing a systematic study of the discretization schemes and optimization strategies for the p-tVMC method.
