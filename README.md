@@ -21,7 +21,7 @@ The dynamics of a closed quantum system is described by the Schrödinger equatio
 $
 \ket{\psi(t+\text{d}t)} = e^{-i  H \text{d}t} \ket{\psi(t)},
 $
-where $ H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
+where $H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
 ```math
 \theta(t+\text{d} t) = \underset{\theta}{\text{argmin}}\,\, \mathcal{L}\left(\ket{\psi_\theta}, e^{-i  H \text{d} t} \ket{\psi_{\theta(t)}}\right),
 ```
@@ -35,8 +35,8 @@ Efficient, scalable, and high-order approximations of the evolutor can be obtain
      e^{-i  H \text{d} t} = \prod_{k=1}^{s} \left( V_{k}^{-1}  U_{k}\right) \cdot \mathcal{D}_k + \mathcal{O}\left({\text{d} t^{o(s) + 1}}\right),
 ```
 where the number of elements $s$ in the series is related to the order of the expansion $o = o(s)$.
-The operators $ U_k$ and $ V_k$ are linear functions of the Hamiltonian $ H$ chosen to approximate the evolutor to a desired order of accuracy.
-The evolution of the parameters $\theta(t) \to \theta(t+\text{d} t)$ is thus found by solving a sequence of $s$ subsequent optimization problems, with the output of each substep serving as the input for the next. Specifically, setting  $\theta(t) \equiv \theta^{(0)}$, and $\theta(t+\text{d} t) \equiv \theta^{(s)}$, we can decompose the evolution of the parameters as 
+The operators $U_k$ and $V_k$ are linear functions of the Hamiltonian $H$ chosen to approximate the evolutor to a desired order of accuracy.
+The evolution of the parameters $\theta(t) \to \theta(t+\text{d} t)$ is thus found by solving a sequence of $s$ subsequent optimization problems, with the output of each substep serving as the input for the next. Specifically, setting $\theta(t) \equiv \theta^{(0)}$, and $\theta(t+\text{d} t) \equiv \theta^{(s)}$, we can decompose the evolution of the parameters as 
 ```math
     \theta^{(k)} = \underset{\theta}{\text{argmin}}\,\,\mathcal{L}\left( V_k \ket{\psi_\theta},  U_k \ket{\psi_{\theta^{(k-1)}}}\right),
 ```
@@ -84,7 +84,7 @@ The `InfidelityOptimizerNG` driver is an instance of the `AdvancedVariationalDri
 
 </p>
 
-Here, $N$ is the number of particles in the system, $ \Lambda = -i  H \text{d}t$, and $ \Lambda_x$ and $ \Lambda_z$ are the diagonal and off-diagonal parts of $ \Lambda$, respectively. The symbol $\dagger$ indicates that the number of substeps does not have a clear simple relation to the order of the expansion. 
+Here, $N$ is the number of particles in the system, $\Lambda = -i  H \text{d}t$, and $\Lambda_x$ and $\Lambda_z$ are the diagonal and off-diagonal parts of $\Lambda$, respectively. The symbol $\dagger$ indicates that the number of substeps does not have a clear simple relation to the order of the expansion. 
 Semi-analytically we could determine that for `S-LPE-o` the first few substeps and orders are $(s,o) = (1,1), (2,2), (4,3)$ and for `S-PPE-o` they are $(s,o) = (1,2), (2,3), (3,4)$.
 
 The proposed schemes are explicitly constructed to take advantage of the structure of the optimization problems, minimizing the number of optimizations required to achieve a given order of accuracy and the computational cost of each optimization. The numerical values of the expansion coefficients $a_k$, $b_k$, and $\alpha_k$ were found with the Mathematica scripts provided in the [`mathematica_scripts`](./ProductExpansions/mathematica_scripts/) directory.
@@ -146,8 +146,9 @@ driver.run(n_iter=100, out=logger, callback=autotune_cb)
 ```
 
 ## Performing the time evolution
-As we have seen above, a single timestep ($t\to t + \text{d}t$) consists of a sequence of optimizations with a properly chosen set of $ U_k$ and $ V_k$.
-In the sections above we showed how to easily perform a single infidelity optimization for a given choice of $ U$ and $ V$. 
+As we have seen above, a single timestep ($t\to t + \text{d}t$) consists of a sequence of optimizations with a properly chosen set of $U_k$ and $V_k$.
+In the sections above we showed how to easily perform a single infidelity optimization for a given choice of $U$ and 
+$V$. 
 In this package we provide a modular structure allowing to perform a single optimization, a sequence of optimizations, and the full time evolution (sequence of sequences). The structure of the packager is pictorially represented in the following figure:
 
 <p align="center">
