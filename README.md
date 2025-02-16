@@ -95,11 +95,11 @@ is replaced by the natural gradient descent update
 ```math
 \theta \to \theta - \alpha S^{-1} \nabla \mathcal{L}(\theta),
 ```
-where $\mathcal{S}$ is the Quantum Fisher Information Matrix (QFIM) or Quantum Geometric Tensor (QGT).
+where $S$ is the Quantum Fisher Information Matrix (QFIM) or Quantum Geometric Tensor (QGT).
 This preconditioning by the QGT is hardcoded in the [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver. 
 The most basic keyword arguments that can be used to customize the preconditioning are:
 - `optimizer`: an optax optimizer object. This should always be `optax.sgd` when performing natural gradient descent.
-- `diag_shift`: a small positive number to be added to the diagonal of the curvature matrix to ensure its invertibility and avoid numerical instabilities.
+- `diag_shift`: It is often the case that the QFIM is ill-conditioned, leading to numerical instabilities in the optimization process. To mitigate this issue, we use Tikhnov regularization, adding a small positive shift to the diagonal of the QGT as $S \to S + \lambda \mathbb{1}$. The `diag_shift` parameter controls the value of $\lambda$.
 - `linear_solver_fn`: a function that takes as input a matrix and a vector and returns the solution of the linear system. This is used to solve the linear system in the natural gradient descent step. The `cholesky` solver from NetKet is one of the most efficient choices for this.
 
 #### Nerual tangent kernel
