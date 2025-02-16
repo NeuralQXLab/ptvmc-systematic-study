@@ -17,11 +17,7 @@ pip install -e ./ptvmc-systematic-study
 
 
 ## Explanation of the method
-The dynamics of a closed quantum system is described by the Schrödinger equation
-$
-\ket{\psi(t+\text{d}t)} = e^{-i  H \text{d}t} \ket{\psi(t)},
-$
-where $H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
+The dynamics of a closed quantum system is described by the Schrödinger equation $\ket{\psi(t+\text{d}t)} = e^{-i  H \text{d}t} \ket{\psi(t)}$, where $H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
 ```math
 \theta(t+\text{d} t) = \underset{\theta}{\text{argmin}}\,\, \mathcal{L}\left(\ket{\psi_\theta}, e^{-i  H \text{d} t} \ket{\psi_{\theta(t)}}\right),
 ```
