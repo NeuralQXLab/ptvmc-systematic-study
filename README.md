@@ -1,6 +1,21 @@
 # ptvmc-systematic-study
 This is a package for simulating the real-time dynamics of large-scale quantum spin systems using the projected time-dependent Variational Monte Carlo (p-tVMC) method. The package is based on the results of the [Neural Projected Quantum Dynamics: a systematic study](https://arxiv.org/abs/2410.10720) paper.
 
+## Installation
+This package is not registered on PyPi, so you must install it directly from GitHub. To do so, you can run the following command:
+```bash
+pip install git+https://github.com/NeuralQXLab/ptvmc-systematic-study
+```
+You can also clone the repository and install the package locally by running
+```bash
+git clone https://github.com/NeuralQXLab/ptvmc-systematic-study
+pip install -e ./ptvmc-systematic-study
+```
+
+## Table of examples
+
+
+
 ## Explanation of the method
 The dynamics of a closed quantum system is described by the Schrödinger equation
 $
@@ -214,9 +229,27 @@ To use it, one simply does
     where `H` is the Hamiltonian of the system, `dt` is the time step, `T` is the final time of the physical simulation, and `vs` is initial variational state.
 
 
-<!-- Repository for material accompanying the ptvmc systematic study paper
-
-- `ProductExamples/` directory containing the material discussing Section 2 of the paper, showing the accuracy of the various integration schemes.
-	- `ProductExamples/mathematica_scripts` Contains the mathematica scripts used to generate the (arbitrary precision) coefficients for the various integrators discussed in the paper.
-- `netket_ptvmc` directory containing a python package built on top of [NetKet](https://github.com/netket/netket) implementing the Infidelity optimisation strategies discussed in the manuscript as well as the ptvmc integration schemes.
-	- `netket_ptvmc/examples` contains some examples using the code, both for bare infidelity optimisation (with and without the autotuning logic) and for ptvmc. -->
+## How to cite
+If you use this package in your research, please cite this repository as
+```
+@software{
+    netket_fidelity,
+    author = {Gravina, Luca and Vicentini, Filippo},
+    title = {ptvmc-systematic-study package},
+    url = {https://github.com/NeuralQXLab/ptvmc-systematic-study},
+    year = {2025}
+}
+```
+<!-- doi = {10.5281/zenodo.8344170}, -->
+<!-- version = {0.0.2}, -->
+and the paper as
+```
+@article{
+    gravina_neural_2024,
+    title={Neural Projected Quantum Dynamics: a systematic study},
+    author={Gravina, Luca and Savona, Vincenzo and Vicentini, Filippo},
+    journal={arXiv preprint arXiv:2410.10720},
+    year={2024},
+    url = {https://arxiv.org/abs/2410.10720}
+}
+```
