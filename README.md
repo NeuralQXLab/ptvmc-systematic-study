@@ -31,15 +31,15 @@ A practical implementation of the method requires a careful analysis of two aspe
 
 ### Integration schemes
 Efficient, scalable, and high-order approximations of the evolutor can be obtained in the form of a product series
-$$
+```math
      e^{-i \hat H \text{d} t} = \prod_{k=1}^{s} \left(\hat V_{k}^{-1} \hat U_{k}\right) \cdot \mathcal{D}_k + \mathcal{O}\left({\text{d} t^{o(s) + 1}}\right),
-$$
+```
 where the number of elements $s$ in the series is related to the order of the expansion $o = o(s)$.
 The operators $\hat U_k$ and $\hat V_k$ are linear functions of the Hamiltonian $\hat H$ chosen to approximate the evolutor to a desired order of accuracy.
 The evolution of the parameters $\theta(t) \to \theta(t+\text{d} t)$ is thus found by solving a sequence of $s$ subsequent optimization problems, with the output of each substep serving as the input for the next. Specifically, setting  $\theta(t) \equiv \theta^{(0)}$, and $\theta(t+\text{d} t) \equiv \theta^{(s)}$, we can decompose the evolution of the parameters as 
-$$
+```math
     \theta^{(k)} = \underset{\theta}{\text{argmin}}\,\,\mathcal{L}\left(\hat V_k \ket{\psi_\theta}, \hat U_k \ket{\psi_{\theta^{(k-1)}}}\right),
-$$
+```
 with $0<k<s$. 
 
 Each optimization is preceded by the application of $\mathcal{D}_k$ to the state $\ket{\psi_{\theta^{(k-1)}}}$. $\mathcal{D}_k$ includes all those operations that can be applied exactly to the state via an analytical change of the parameters and, as such, require no optimization. For the purpose of this package, $\mathcal{D}_k$ is used to apply a diagonal operator to the state in an exact fashion and at no additional cost.
@@ -92,13 +92,13 @@ In this directory we also provide python implementations of the product expansio
 
 ### Optimization process
 The optimization process is a crucial aspect of the p-tVMC method. As we show in the paper, to drive optimizations to convergence, the use of Natural Gradient Descent (NGD) is essential. Within this framework, the vanilla gradient descent update
-$$
+```math
 \theta \to \theta - \alpha \nabla \mathcal{L}(\theta)
-$$
+```
 is replaced by the natural gradient descent update
-$$
+```math
 \theta \to \theta - \alpha S^{-1} \nabla \mathcal{L}(\theta),
-$$
+```
 where $\mathcal{S}$ is the Quantum Fisher Information Matrix (QFIM) or Quantum Geometric Tensor (QGT).
 This preconditioning by the QGT is hardcoded in the [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver. 
 The most basic keyword arguments that can be used to customize the preconditioning are:
