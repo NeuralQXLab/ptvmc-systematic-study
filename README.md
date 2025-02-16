@@ -38,7 +38,8 @@ The evolution of the parameters $\theta(t) \to \theta(t+\text{d} t)$ is thus fou
 ```
 with $0<k<s$. 
 
-Each optimization is preceded by the application of $\mathcal{D}_k$ to the state $\ket{\psi_{\theta^{(k-1)}}}$. $\mathcal{D}_k$ includes all those operations that can be applied exactly to the state via an analytical change of the parameters and, as such, require no optimization. For the purpose of this package, $\mathcal{D}_k$ is used to apply a diagonal operator to the state in an exact fashion and at no additional cost.
+Each optimization is preceded by the application of $\mathcal{D}_k$ to the state $\ket{\psi_{\theta^{(k-1)}}}$.
+$\mathcal{D}_k$ includes all those operations that can be applied exactly to the state via an analytical change of the parameters and, as such, require no optimization. For the purpose of this package, $\mathcal{D}_k$ is used to apply a diagonal operator to the state in an exact fashion and at no additional cost.
 
 With this package, a single optimization of the above form can be easily performed as 
 
