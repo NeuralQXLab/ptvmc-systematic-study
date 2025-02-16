@@ -19,26 +19,26 @@ pip install -e ./ptvmc-systematic-study
 ## Explanation of the method
 The dynamics of a closed quantum system is described by the Schrödinger equation
 $
-\ket{\psi(t+\text{d}t)} = e^{-i \hat H \text{d}t} \ket{\psi(t)},
+\ket{\psi(t+\text{d}t)} = e^{-i  H \text{d}t} \ket{\psi(t)},
 $
-where $\hat H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
+where $ H$ is the Hamiltonian of the system. As $\ket{\psi(t)}$ is exponentially costly to store and manipulate, a parameterized ansatz $\ket{\psi_{\theta(t)}} \approx \ket{\psi(t)}$ with a polynomial number of parameters and a tractable query complexity is used to approximate the state at all times. The McLachlan variational principle is then used to recast the Schrödinger equation into the optimization problem
 ```math
-\theta(t+\text{d} t) = \underset{\theta}{\text{argmin}}\,\, \mathcal{L}\left(\ket{\psi_\theta}, e^{-i \hat H \text{d} t} \ket{\psi_{\theta(t)}}\right),
+\theta(t+\text{d} t) = \underset{\theta}{\text{argmin}}\,\, \mathcal{L}\left(\ket{\psi_\theta}, e^{-i  H \text{d} t} \ket{\psi_{\theta(t)}}\right),
 ```
 where $\mathcal{L}$ is a suitable loss function quantifying the discrepancy between two quantum states. This is the starting point for the p-tVMC method. 
 
-A practical implementation of the method requires a careful analysis of two aspects: (i) an efficient approximation of the evolutor $e^{-i \hat H \text{d} t}$, and (ii) a reliable way of driving the optimizations to convergence. The paper [Neural Projected Quantum Dynamics: a systematic study](https://arxiv.org/abs/2410.10720) addresses these two aspects by proposing a systematic study of the discretization schemes and optimization strategies for the p-tVMC method.
+A practical implementation of the method requires a careful analysis of two aspects: (i) an efficient approximation of the evolutor $e^{-i  H \text{d} t}$, and (ii) a reliable way of driving the optimizations to convergence. The paper [Neural Projected Quantum Dynamics: a systematic study](https://arxiv.org/abs/2410.10720) addresses these two aspects by proposing a systematic study of the discretization schemes and optimization strategies for the p-tVMC method.
 
 ### Integration schemes
 Efficient, scalable, and high-order approximations of the evolutor can be obtained in the form of a product series
 ```math
-     e^{-i \hat H \text{d} t} = \prod_{k=1}^{s} \left(\hat V_{k}^{-1} \hat U_{k}\right) \cdot \mathcal{D}_k + \mathcal{O}\left({\text{d} t^{o(s) + 1}}\right),
+     e^{-i  H \text{d} t} = \prod_{k=1}^{s} \left( V_{k}^{-1}  U_{k}\right) \cdot \mathcal{D}_k + \mathcal{O}\left({\text{d} t^{o(s) + 1}}\right),
 ```
 where the number of elements $s$ in the series is related to the order of the expansion $o = o(s)$.
-The operators $\hat U_k$ and $\hat V_k$ are linear functions of the Hamiltonian $\hat H$ chosen to approximate the evolutor to a desired order of accuracy.
+The operators $ U_k$ and $ V_k$ are linear functions of the Hamiltonian $ H$ chosen to approximate the evolutor to a desired order of accuracy.
 The evolution of the parameters $\theta(t) \to \theta(t+\text{d} t)$ is thus found by solving a sequence of $s$ subsequent optimization problems, with the output of each substep serving as the input for the next. Specifically, setting  $\theta(t) \equiv \theta^{(0)}$, and $\theta(t+\text{d} t) \equiv \theta^{(s)}$, we can decompose the evolution of the parameters as 
 ```math
-    \theta^{(k)} = \underset{\theta}{\text{argmin}}\,\,\mathcal{L}\left(\hat V_k \ket{\psi_\theta}, \hat U_k \ket{\psi_{\theta^{(k-1)}}}\right),
+    \theta^{(k)} = \underset{\theta}{\text{argmin}}\,\,\mathcal{L}\left( V_k \ket{\psi_\theta},  U_k \ket{\psi_{\theta^{(k-1)}}}\right),
 ```
 with $0<k<s$. 
 
@@ -71,20 +71,20 @@ driver.run(n_iter=100, out=logger)
 ```
 The `InfidelityOptimizerNG` driver is an instance of the `AdvancedVariationalDriver` class. This is an extension of the `VariationalDriver` class in NetKet, which allows for a more controlled optimization loop and more flexible callback functions. 
 
-`U` and `V` are NetKet `DiscreteOperator`s to be defined by the user. Choosing a suitable set of $\{\hat V_k, \hat U_k\}$ is instrumental to correctly capture the dynamics of the system. The package provides a set of pre-defined integration schemes, whose properties are extensively discussed in the paper. The following table summarizes the available schemes:
+`U` and `V` are NetKet `DiscreteOperator`s to be defined by the user. Choosing a suitable set of $\{ V_k,  U_k\}$ is instrumental to correctly capture the dynamics of the system. The package provides a set of pre-defined integration schemes, whose properties are extensively discussed in the paper. The following table summarizes the available schemes:
 
 <p align="center">
 
 | Scheme | Order | Substeps | Complexity | $U_k$ | $V_k$ | $D_k$ |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| `LPE-o` | o | o | $\mathcal{O}(N)$ | $1 + a_k\hat \Lambda$ | $\mathbb{1}$ | $\mathbb{1}$ |
-| `PPE-o` | o | o/2 | $\mathcal{O}(2N)$ | $1 + a_k\hat \Lambda$ | $1 + b_k\hat \Lambda$ | $\mathbb{1}$ |
-| `S-LPE-o` | o | $\dagger$ | $\mathcal{O}(N)$ | $1 + a_k\hat \Lambda_x$ | $\mathbb{1}$ | $\text{exp}(\alpha_k \Lambda_z)$ |
-| `S-PPE-o` | o | $\dagger$ | $\mathcal{O}(2N)$ | $1 + a_k\hat \Lambda_x$ | $1 + b_k\hat \Lambda$ | $\text{exp}(\alpha_k \Lambda_z)$ |
+| `LPE-o` | o | o | $\mathcal{O}(N)$ | $1 + a_k \Lambda$ | $\mathbb{1}$ | $\mathbb{1}$ |
+| `PPE-o` | o | o/2 | $\mathcal{O}(2N)$ | $1 + a_k \Lambda$ | $1 + b_k \Lambda$ | $\mathbb{1}$ |
+| `S-LPE-o` | o | $\dagger$ | $\mathcal{O}(N)$ | $1 + a_k \Lambda_x$ | $\mathbb{1}$ | $\text{exp}(\alpha_k \Lambda_z)$ |
+| `S-PPE-o` | o | $\dagger$ | $\mathcal{O}(2N)$ | $1 + a_k \Lambda_x$ | $1 + b_k \Lambda$ | $\text{exp}(\alpha_k \Lambda_z)$ |
 
 </p>
 
-Here, $N$ is the number of particles in the system, $\hat \Lambda = -i \hat H \text{d}t$, and $\hat \Lambda_x$ and $\hat \Lambda_z$ are the diagonal and off-diagonal parts of $\hat \Lambda$, respectively. The symbol $\dagger$ indicates that the number of substeps does not have a clear simple relation to the order of the expansion. 
+Here, $N$ is the number of particles in the system, $ \Lambda = -i  H \text{d}t$, and $ \Lambda_x$ and $ \Lambda_z$ are the diagonal and off-diagonal parts of $ \Lambda$, respectively. The symbol $\dagger$ indicates that the number of substeps does not have a clear simple relation to the order of the expansion. 
 Semi-analytically we could determine that for `S-LPE-o` the first few substeps and orders are $(s,o) = (1,1), (2,2), (4,3)$ and for `S-PPE-o` they are $(s,o) = (1,2), (2,3), (3,4)$.
 
 The proposed schemes are explicitly constructed to take advantage of the structure of the optimization problems, minimizing the number of optimizations required to achieve a given order of accuracy and the computational cost of each optimization. The numerical values of the expansion coefficients $a_k$, $b_k$, and $\alpha_k$ were found with the Mathematica scripts provided in the [`mathematica_scripts`](./ProductExpansions/mathematica_scripts/) directory.
@@ -146,8 +146,8 @@ driver.run(n_iter=100, out=logger, callback=autotune_cb)
 ```
 
 ## Performing the time evolution
-As we have seen above, a single timestep ($t\to t + \text{d}t$) consists of a sequence of optimizations with a properly chosen set of $\hat U_k$ and $\hat V_k$.
-In the sections above we showed how to easily perform a single infidelity optimization for a given choice of $\hat U$ and $\hat V$. 
+As we have seen above, a single timestep ($t\to t + \text{d}t$) consists of a sequence of optimizations with a properly chosen set of $ U_k$ and $ V_k$.
+In the sections above we showed how to easily perform a single infidelity optimization for a given choice of $ U$ and $ V$. 
 In this package we provide a modular structure allowing to perform a single optimization, a sequence of optimizations, and the full time evolution (sequence of sequences). The structure of the packager is pictorially represented in the following figure:
 
 <p align="center">
