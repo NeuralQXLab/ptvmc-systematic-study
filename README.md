@@ -72,8 +72,8 @@ The `InfidelityOptimizerNG` driver is an instance of the `AdvancedVariationalDri
 Here, $N$ is the number of particles in the system, $\hat \Lambda = -i \hat H \text{d}t$, and $\hat \Lambda_x$ and $\hat \Lambda_z$ are the diagonal and off-diagonal parts of $\hat \Lambda$, respectively. The symbol $\dagger$ indicates that the number of substeps does not have a clear simple relation to the order of the expansion. 
 Semi-analytically we could determine that for `S-LPE-o` the first few substeps and orders are $(s,o) = (1,1), (2,2), (4,3)$ and for `S-PPE-o` they are $(s,o) = (1,2), (2,3), (3,4)$.
 
-The proposed schemes are explicitly constructed to take advantage of the structure of the optimization problems, minimizing the number of optimizations required to achieve a given order of accuracy and the computational cost of each optimization. The numerical values of the expansion coefficients $a_k$, $b_k$, and $\alpha_k$ were found with the Mathematica scripts provided in the [`mathematica_scripts`](ProductExamples/mathematica_scripts) directory.
-In this directory we also provide python implementations of the product expansions and an easy example comparing the performance of the product expansion discretization scheme to the exact evolution operator when applied to state vector simulations (no MC sampling and full description of the state).
+The proposed schemes are explicitly constructed to take advantage of the structure of the optimization problems, minimizing the number of optimizations required to achieve a given order of accuracy and the computational cost of each optimization. The numerical values of the expansion coefficients $a_k$, $b_k$, and $\alpha_k$ were found with the Mathematica scripts provided in the [`mathematica_scripts`](./ProductExpansions/mathematica_scripts/) directory.
+In this directory we also provide python implementations of the product expansions and an easy [example](./ProductExpansions/example.py) comparing the performance of the product expansion discretization scheme to the exact evolution operator when applied to state vector simulations (no MC sampling and full description of the state).
 
 ### Optimization process
 The optimization process is a crucial aspect of the p-tVMC method. As we show in the paper, to drive optimizations to convergence, the use of Natural Gradient Descent (NGD) is essential. Within this framework, the vanilla gradient descent update
@@ -85,7 +85,7 @@ $$
 \theta \to \theta - \alpha S^{-1} \nabla \mathcal{L}(\theta),
 $$
 where $\mathcal{S}$ is the Quantum Fisher Information Matrix (QFIM) or Quantum Geometric Tensor (QGT).
-This preconditioning by the QGT is hardcoded in the `InfidelityOptimizerNG` driver. 
+This preconditioning by the QGT is hardcoded in the [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver. 
 The most basic keyword arguments that can be used to customize the preconditioning are:
 - `optimizer`: an optax optimizer object. This should always be `optax.sgd` when performing natural gradient descent.
 - `diag_shift`: a small positive number to be added to the diagonal of the curvature matrix to ensure its invertibility and avoid numerical instabilities.
@@ -96,7 +96,7 @@ The QGT is a square matrix of size $N_p \times N_p$, where $N_p$ is the number o
 The main challenge with NGD is the high computational cost of inverting the QGT in large-scale models where the number of parameters largely surpasses the number of samples $N_s$ ($N_p\gg N_s$). 
 At the moment, the only method enabling the use of NGD in deep architectures without approximating the curvature matrix is the tangent kernel method. This formulation requires only the inversion of the Neural Tangent Kernel (NTK) matrix, an $N_s \times N_s$ matrix, thereby shifting the computational bottleneck from $N_p$ to $N_s$.
 
-The `InfidelityOptimizerNG` driver provides an implementation of the tangent kernel method. The main keyword arguments that can be used to activate/deactivate the tangent kernel method are:
+The [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver provides an implementation of the tangent kernel method. The main keyword arguments that can be used to activate/deactivate the tangent kernel method are:
 - `use_ntk`: a boolean flag to enable the use of the tangent kernel method. We recommend using this method when the number of parameters largely surpasses the number of samples.
 - `on_the_fly`: a boolean flag to enable the on-the-fly computation of the NTK. This is useful when the number of samples and parameters is too large to store the Jacobian matrix in memory.
 
@@ -106,7 +106,7 @@ Choosing an appropriate value for the diagonal-shift $\lambda$ of the QGT or NTK
 
 Identifying an optimal value for $\lambda$ is a nontrivial problem and a standard approach with strong theoretical guarantees is not available. In the paper, we propose an extension of the Levenberg-Marquardt heuristic incorporating proportional control to smoothly and automatically adjust the value of $\lambda$ during the optimization process. 
 
-While the details of the autotuning logic can be found in the paper, its use in the `InfidelityOptimizerNG` driver is straightforward. It is implemented as a callback function that can be passed to the driver as follows:
+While the details of the [autotuning logic](./netket_ptvmc/packages/advanced_drivers/_src/callbacks/autodiagshift.py) can be found in the paper, its use in the [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver is straightforward. It is implemented as a callback function that can be passed to the driver as follows:
 
 ```python
 from advanced_drivers.callbacks import PI_controller_diagshift
@@ -136,13 +136,14 @@ In the sections above we showed how to easily perform a single infidelity optimi
 In this package we provide a modular structure allowing to perform a single optimization, a sequence of optimizations, and the full time evolution (sequence of sequences). The structure of the packager is pictorially represented in the following figure:
 
 <p align="center">
-    <img src="docs/figures/ptvmc_driver_schematic/ptvmc_driver.pdf" >
+    <img src="./docs/figures/ptvmc_driver_schematic/ptvmc_driver.png" width="1000">
+
 </p>
 
 The main classes are:
-- `AbstractStateCompression`: an abstract class defining the interface for a single state compression. This class is used to define the compression algorithm to be used in the optimization process.
+- [`AbstractStateCompression`](./netket_ptvmc/packages/ptvmc/_src/compression/abstract_compression.py): an abstract class defining the interface for a single state compression. This class is used to define the compression algorithm to be used in the optimization process.
 
-    For the case of infidelity optimization a concretization of the abstract class is already provided in [`InfidelityCompression`](ptvmc/_src/compression/infidelity.py).\
+    For the case of infidelity optimization a concretization of the abstract class is already provided in [`InfidelityCompression`](./netket_ptvmc/packages/ptvmc/_src/compression/infidelity.py).\
 To use it, one simply does
     ```python
     compression_alg = ptvmc.compression.InfidelityCompression(
@@ -179,20 +180,20 @@ To use it, one simply does
     )
     ```
 
-- `AbstractDiscretization`: an abstract class defining the interface for a single timestep. This class is used to define the sequence of compressions making up a physical timestep.
+- [`AbstractDiscretization`](./netket_ptvmc/packages/ptvmc/_src/solver/base.py): an abstract class defining the interface for a single timestep. This class is used to define the sequence of compressions making up a physical timestep.
 
-    We provide a ready-to-use concretization of the general `AbstractDiscretization` class implementing all product expansions schemes detailed above. They can be simply called as
+    We provide a ready-to-use concretization of the general [`AbstractDiscretization`](./netket_ptvmc/packages/ptvmc/_src/solver/base.py) class implementing all product expansions schemes detailed above. They can be simply called as
     ```python
     solver = ptvmc.solver.SPPE3()
     ```
     These solvers allow looping over the sequence of compressions defining a physical timestep. 
     While this class defines the structure of the discretization scheme, it does not execute the compressions.
-    This can be performed by calling the `step` method of the `Integrator` class which takes as input the compression algorithm, and the solver. 
+    This can be performed by calling the `step` method of the [`Integrator`](./netket_ptvmc/packages/ptvmc/_src/integrator/integrator.py) class which takes as input the compression algorithm, and the solver. 
 
-- `Integrator`: a class that takes care of a single step of time evolution. It takes as input the compression algorithm and the solver and performs a cycle over the different stages of the discretization algorithms.
+- [`Integrator`](./netket_ptvmc/packages/ptvmc/_src/integrator/integrator.py): a class that takes care of a single step of time evolution. It takes as input the compression algorithm and the solver and performs a cycle over the different stages of the discretization algorithms.
 
 
-- `PTVMCDriver`: a class that takes care of the full time evolution. It takes as input the generator of the dynamics, the initial time, the solver, the compression algorithm, and the initial variational state. It then performs the full time evolution of the system looping over the single timesteps (loops over the `Integrator` class). 
+- [`PTVMCDriver`](./netket_ptvmc/packages/ptvmc/_src/driver/ptvmc_driver.py): a class that takes care of the full time evolution. It takes as input the generator of the dynamics, the initial time, the solver, the compression algorithm, and the initial variational state. It then performs the full time evolution of the system looping over the single timesteps (loops over the [`Integrator`](./netket_ptvmc/packages/ptvmc/_src/integrator/integrator.py) class). 
 
     The full time evolution can be performed as follows:
     ```python
