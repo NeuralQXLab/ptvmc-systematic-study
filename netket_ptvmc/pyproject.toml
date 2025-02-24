@@ -19,6 +19,7 @@ dependencies = [
     "sparse>=0.15", #This is required to serialize types from Hydra config files
     "omegaconf>=2.3.0",
     "matplotlib>=3.10.0",
+    "nqxpack>=0.1.1",
 ]
 version = "0.1"
 
