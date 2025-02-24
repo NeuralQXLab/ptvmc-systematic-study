@@ -1,16 +1,11 @@
----
-layout: default
-title: My Page with Math
----
-
 # ptvmc-systematic-study
 This is a package for simulating the real-time dynamics of large-scale quantum spin systems using the projected time-dependent Variational Monte Carlo (p-tVMC) method. The package is based on the results of the [Neural Projected Quantum Dynamics: a systematic study](https://arxiv.org/abs/2410.10720) paper.
 
 <!-- $h=2h_c$\ -->
-![3x3 TFIM quench $h=2h_c$](./docs/movies/animation_2hc.gif)
+<!-- ![3x3 TFIM quench $h=2h_c$](./docs/movies/animation_2hc.gif) -->
 
 <!-- $h=h_c/10$\ -->
-<!-- ![3x3 TFIM quench $h=h_c/10$](./docs/movies/animation_0.1hc.gif) -->
+![3x3 TFIM quench $h=h_c/10$](./docs/movies/animation_0.1hc.gif)
 
 ## Installation
 This package is not registered on PyPi, so you must install it directly from GitHub. To do so, you can run the following command:
@@ -20,12 +15,12 @@ pip install git+https://github.com/NeuralQXLab/ptvmc-systematic-study
 You can also clone the repository and install the package locally by running
 ```bash
 git clone https://github.com/NeuralQXLab/ptvmc-systematic-study
-pip install -e ./ptvmc-systematic-study
+pip install -e ./netket_ptvmc
 ```
 
 ## List of examples
-We provide two main examples for the moment. The most complete one is the ['TFIM dynamics'](./netket_ptvmc/examples/tfim_dynamics.py) example, which is used to produce the data in the animations above. 
-We also provide an ['example'](./netket_ptvmc/examples/state_compression.py) showing a simple code snippet to perform a single state compression. 
+We provide three main examples for the moment. The most complete one is the ['TFIM dynamics'](./netket_ptvmc/examples/tfim_dynamics_3x3.py) example, which is used to produce the data in the animations above. 
+We also provide an ['example'](./netket_ptvmc/examples/state_compression.py) showing a simple code snippet to perform a single state compression. Finally we provide an ['example'](./netket_ptvmc/examples/tfim_dynamics_6x6.py) very similar to the first one, but with a larger system size and with parameters more closely resembling the ones used in the paper.
 
 
 ## Explanation of the method
@@ -82,7 +77,7 @@ The `InfidelityOptimizerNG` driver is an instance of the `AdvancedVariationalDri
 
 `U` and `V` are NetKet `DiscreteOperator`s to be defined by the user. Choosing a suitable set of $\{ V_k,  U_k\}$ is instrumental to correctly capture the dynamics of the system. The package provides a set of pre-defined integration schemes, whose properties are extensively discussed in the paper. The following table summarizes the available schemes:
 
-<p align="center">
+<!-- <p align="center">
 
 | Scheme | Order | Substeps | Complexity | $U_k$ | $V_k$ | $D_k$ |
 |:---:|:---:|:---:|:---:|:---:|:---:|:---:|
@@ -91,7 +86,16 @@ The `InfidelityOptimizerNG` driver is an instance of the `AdvancedVariationalDri
 | `S-LPE-o` | o | $\dagger$ | $\mathcal{O}(N)$ | $1 + a_k \Lambda_x$ | $\mathbb{1}$ | $\text{exp}(\alpha_k \Lambda_z)$ |
 | `S-PPE-o` | o | $\dagger$ | $\mathcal{O}(2N)$ | $1 + a_k \Lambda_x$ | $1 + b_k \Lambda$ | $\text{exp}(\alpha_k \Lambda_z)$ |
 
+</p> -->
+
+<p align="center">
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="./docs/figures/table_white.png">
+        <source media="(prefers-color-scheme: light)" srcset="./docs/figures/table.png">
+        <img src="./docs/figures/table.png" alt="Schemes Table" width="700">
+    </picture>
 </p>
+
 
 Here, $N$ is the number of particles in the system, $\Lambda = -i  H \text{d}t$, and $\Lambda_x$ and $\Lambda_z$ are the diagonal and off-diagonal parts of $\Lambda$, respectively. The symbol $\dagger$ indicates that the number of substeps does not have a clear simple relation to the order of the expansion. 
 Semi-analytically we could determine that for `S-LPE-o` the first few substeps and orders are $(s,o) = (1,1), (2,2), (4,3)$ and for `S-PPE-o` they are $(s,o) = (1,2), (2,3), (3,4)$.
