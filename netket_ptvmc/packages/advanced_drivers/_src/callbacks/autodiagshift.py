@@ -75,6 +75,16 @@ class PI_controller_diagshift(AbstractCallback):
         pytree_node=False, default=None, serialize=False
     )
 
+    _max_step_attempts: int = struct.field(
+        pytree_node=False, default=10, serialize=False
+    )
+    _reduction_bound_low: float = struct.field(
+        pytree_node=False, default=0.1, serialize=False
+    )
+    _reduction_bound_high: float = struct.field(
+        pytree_node=False, default=3, serialize=False
+    )
+
     def __init__(
         self,
         target: float = 0.75,
@@ -86,6 +96,9 @@ class PI_controller_diagshift(AbstractCallback):
         order: int = 2,
         beta_1: float = 1.0,
         beta_2: float = 0.00,
+        max_step_attempts: int = 10,
+        reduction_bound_low: float = 0.1,
+        reduction_bound_high: float = 3,
     ):
         self.target = target
         self.safety_fac = safety_fac
@@ -99,6 +112,10 @@ class PI_controller_diagshift(AbstractCallback):
 
         self._old_mutiplier = 1
         self._multiplier = 1
+
+        self._max_step_attempts = max_step_attempts
+        self._reduction_bound_high = reduction_bound_high
+        self._reduction_bound_low = reduction_bound_low
 
     def on_run_start(self, step, driver, callbacks):
         assert_learning_rate_reachable(driver)
@@ -157,18 +174,45 @@ class PI_controller_diagshift(AbstractCallback):
             self.diag_shift_max,
         )
 
-        if ρ < 0.1 or ρ > 3:
-            driver._reject_step = True
-        else:
-            log_data["adaptive_diagshift"] = {
-                "M": M,
-                "xi": ξ,
-                "rho": ρ,
-                "updated_h": updated_h,
-                "multiplier": self._multiplier,
-                "diag_shift": driver.diag_shift,
-                "lr": α,
-            }
+        fails = {
+            "h_is_nan": {
+                "condition": not np.isfinite(h),
+                "message": "Loss at current step is NaN.",
+            },
+            "updated_h_is_nan": {
+                "condition": not np.isfinite(updated_h),
+                "message": f"Predicted loss is NaN. This is likely due to the geometric tensor or the gradient. Indeed the linear term is {linear_term} and the quadratic term is {quadratic_term}.",
+            },
+            "rho_out_of_bounds": {
+                "condition": ρ < self._reduction_bound_low
+                or ρ > self._reduction_bound_high,
+                "message": f"ρ is out of bounds. The current value is {ρ}. The bounds are [{self._reduction_bound_low},{self._reduction_bound_high}].",
+            },
+        }
+
+        epic_fails = ["h_is_nan", "updated_h_is_nan"]
+
+        for key, err in fails.items():
+            if err["condition"]:
+                driver._reject_step = True
+
+                if key in epic_fails:
+                    driver.reset_step(hard=True)
+
+                    print(err["message"], "\n")
+
+        if driver._step_attempt > self._max_step_attempts:
+            driver._stop_run = True
+
+        log_data["adaptive_diagshift"] = {
+            "M": M,
+            "xi": ξ,
+            "rho": ρ,
+            "updated_h": updated_h,
+            "multiplier": self._multiplier,
+            "diag_shift": driver.diag_shift,
+            "lr": α,
+        }
 
     def on_step_end(self, step, log_data, driver):
         self._old_mutiplier = self._multiplier

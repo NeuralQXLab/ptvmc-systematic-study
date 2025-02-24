@@ -4,16 +4,20 @@ from flax import core as fcore
 from netket import jax as nkjax
 from netket.optimizer.solver import cholesky
 from netket.vqs import MCState, VariationalState
+from netket.jax._jacobian.default_mode import JacobianMode
 from netket.utils import timing, struct
 from netket.utils.types import ScalarOrSchedule, Optimizer, Array
 from netket.operator import DiscreteOperator, DiscreteJaxOperator
 
 from netket_pro.utils.sampling_Ustate import _lazy_apply_UV_to_afun
-from netket_pro.utils import ensure_jax_operator
+from netket_pro._src.operator.jax_utils import to_jax_operator
 
 from advanced_drivers._src.driver.ngd.driver_abstract_ngd import (
     AbstractNGDDriver,
     _flatten_samples,
+    DeriativesArgs,
+    KernelArgs,
+    KernelFun,
 )
 from advanced_drivers._src.driver.ngd.infidelity_kernels import (
     infidelity_UV_kernel_args,
@@ -77,18 +81,18 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
         linear_solver_fn: Callable[[Array, Array], Array] = cholesky,
         proj_reg: Optional[ScalarOrSchedule] = None,
         momentum: Optional[ScalarOrSchedule] = None,
-        evaluation_mode: Optional[str] = None,
         variational_state: MCState = None,
         chunk_size_bwd: Optional[int] = None,
         collect_quadratic_model: bool = False,
-        use_ntk: bool = False,
-        rloo: bool = False,
         U: Optional[DiscreteOperator] = None,
         V: Optional[DiscreteOperator] = None,
         cv_coeff: Optional[float] = -0.5,
         resample_fraction: Optional[float] = None,
         estimator: Union[str, Callable] = "cmc",
         sample_Uphi: bool = True,
+        mode: Optional[JacobianMode] = None,
+        use_ntk: bool = False,
+        on_the_fly: bool | None = None,
     ):
         r"""
         Initialize the driver.
@@ -103,17 +107,16 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
             momentum: Momentum used to accumulate updates in SPRING.
             linear_solver_fn: Callable to solve the linear problem associated to the updates of the parameters.
                 Defaults to :func:`netket.optimizer.solver.cholesky`.
-            evaluation_mode: The mode used to compute the jacobian or vjp of the variational state.
-                Can be `'real'` or `'complex'` (defaults to the dtype of the output of the model) if the jacobian is to be computed in full.
-                Can be `'onthefly'` if the jacobian is to be computed on the fly.
-                This last option is only available in the NTK formulation (`use_ntk=True`) and corresponds to
-                the old `srt_ntk` drivers.
+            mode: The mode used to compute the jacobian or vjp of the variational state.
+                Can be `'real'` or `'complex'` (defaults to the dtype of the output of the model).
+                `real` can be used for real wavefunctions with a sign to further reduce the computational costs.
+            on_the_fly: Whether to compute the QGT or NTK matrix without evaluating the full jacobian. Defaults to True.
+                This ususally lowers the memory requirement and is necessary for large calculations.
             chunk_size_bwd: The chunk size to use for the backward pass (jacobian or vjp evaluation).
             collect_quadratic_model: Whether to collect the quadratic model. The quantities collected are
                 the linear and quadratic term in the approximation of the loss function. They are stored
                 in the info dictionary of the driver.
             use_ntk: Whether to use the NTK for the computation of the updates.
-            rloo: Whether to use the RLOO correction to the covariance estimator.
             estimator: The estimator used to compute the local gradients and losses. Can be
                 "cmc" or "smc". The good one is cmc (default).
             U: The operator :math:`\hat{U}` acting on the target state :math:`\phi`.
@@ -122,8 +125,8 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
             resample_fraction: The fraction of samples to resample at each step. Standard approaach is to keep this to None, which is equivalent to 1.0.
             sample_Uphi: Whether to sample the transformed target state :math:`\hat U | \phi \rangle` or directly or use importance sampling to sample from :math:`| \phi \rangle`.
         """
-        U_target = ensure_jax_operator(U) if U is not None else None
-        V_state = ensure_jax_operator(V) if V is not None else None
+        U_target = to_jax_operator(U) if U is not None else None
+        V_state = to_jax_operator(V) if V is not None else None
 
         self.chunk_size_U = None
         if target_state.chunk_size is not None:
@@ -155,26 +158,30 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
             proj_reg=proj_reg,
             momentum=momentum,
             linear_solver_fn=linear_solver_fn,
-            evaluation_mode=evaluation_mode,
             variational_state=variational_state,
             chunk_size_bwd=chunk_size_bwd,
             collect_quadratic_model=collect_quadratic_model,
+            mode=mode,
             use_ntk=use_ntk,
-            rloo=rloo,
+            on_the_fly=on_the_fly,
             minimized_quantity_name="Infidelity",
         )
 
-    def reset_step(self):
+    def reset_step(self, hard: bool = False):
         """
         Resets the state of the driver at the beginning of a new step.
 
         This method is called at the beginning of every step in the optimization.
         """
-        self.state.reset()
-        self.target.reset()
+        if hard:
+            self.state.reset_hard()
+            self.target.reset_hard()
+        else:
+            self.state.reset()
+            self.target.reset()
 
     @timing.timed
-    def _prepare_derivatives(self):
+    def _prepare_derivatives(self) -> DeriativesArgs:
         # Incorporate V transformation into the function of psi.
         # U transformation only affects the target state.
         # U is irrelevant for the Jacobian, but not for the local estimator.
@@ -185,6 +192,7 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
             distribution,
             variables=vars,
             resample_fraction=self.resample_fraction,
+            chain_name="Vpsi" if self.V_state is not None else "default",
         )
         samples = _flatten_samples(samples)
 
@@ -192,7 +200,7 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
 
         return afun, params, model_state, samples
 
-    def _get_local_estimators_kernel_args(self):
+    def _get_local_estimators_kernel_args(self) -> KernelArgs:
         vstate = self.state
         tstate = self.target
         V_state = self.V_state
@@ -210,7 +218,7 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
         return afun, vars, σ, extra_args
 
     @property
-    def _kernel(self):
+    def _kernel(self) -> KernelFun:
         """
         The kernel used to compute the local gradients and losses.
         The kernel function can be passed as a callable (don't forget to Jit).
@@ -229,7 +237,7 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
         )
 
     @_kernel.setter
-    def _kernel(self, value):
+    def _kernel(self, value: KernelFun | str):
         if type(value) is str:
             if value == "cmc":
                 self._kernel_fun = cmc_kernel
@@ -245,7 +253,7 @@ class InfidelityOptimizerNG(AbstractNGDDriver):
             raise ValueError("The kernel must be a callable or a string")
 
     @property
-    def target(self):
+    def target(self) -> MCState:
         r"""
         The untransformed target state :math:`| \phi \rangle`.
 

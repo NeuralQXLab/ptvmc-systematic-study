@@ -1,8 +1,6 @@
 import copy
 
-import optax
-
-from netket.utils.types import PyTree, ScalarOrSchedule
+from netket.utils.types import PyTree
 from netket.vqs import VariationalState
 from netket.logging import RuntimeLog
 from netket.operator import AbstractOperator
@@ -11,7 +9,6 @@ from advanced_drivers._src.driver.abstract_variational_driver import (
     AbstractVariationalDriver,
 )
 from advanced_drivers._src.callbacks.progressbar import ProgressBarCallback
-from advanced_drivers.callbacks import AbstractCallback
 
 from ptvmc._src.compression.abstract_compression import (
     AbstractStateCompression,
@@ -82,7 +79,6 @@ class InfidelityCompression(AbstractStateCompression):
                         "chunk_size_bwd": None,
                         "collect_quadratic_model": False,
                         "use_ntk": False,
-                        "rloo": False,
                         "cv_coeff": -0.5,
                         "resample_fraction": None,
                         "estimator": "cmc",
@@ -162,66 +158,3 @@ class InfidelityCompression(AbstractStateCompression):
             _graceful_keyboard_interrupt=False,
         )
         return driver.state, driver, logger.data
-
-
-class InfidelityNGCompression(InfidelityCompression):
-    """
-    Compression algorithm based on the minimisation of the Infidelity using the new
-    drivers with autotuning of the diagonal shift and learning rate.
-
-    Equivalent to using the compression algorithm :class:`ptvmc.compression.InfidelityCompression`
-    with the driver :class:`advanced_drivers.driver.InfidelityOptimizerNG`.
-
-    Args:
-        learning_rate: The learning rate for the optimizer.
-    """
-
-    def __init__(
-        self,
-        learning_rate: ScalarOrSchedule,
-        diag_shift: ScalarOrSchedule = 1e-4,
-        auto_diag_shift: bool = True,
-        auto_diag_shift_kwargs: dict | None = None,
-        max_iters: int = 100,
-        target_infidelity: float | None = None,
-        callbacks: None | list[AbstractCallback] | AbstractCallback = None,
-    ):
-        build_parameters = {
-            "diag_shift": diag_shift,
-            "optimizer": optax.inject_hyperparams(optax.sgd)(
-                learning_rate=learning_rate
-            ),
-        }
-
-        if callbacks is None:
-            cbs = []
-        elif isinstance(callbacks, AbstractCallback):
-            cbs = [callbacks]
-        elif isinstance(callbacks, (list, tuple)):
-            cbs = list(callbacks)
-        else:
-            raise TypeError(
-                f"callbacks must be a list of AbstractCallback or a single AbstractCallback or None, but got {type(callbacks)}"
-            )
-
-        if auto_diag_shift:
-            if auto_diag_shift_kwargs is None:
-                auto_diag_shift_kwargs = {}
-            from advanced_drivers._src.callbacks.autodiagshift import (
-                PI_controller_diagshift,
-            )
-
-            cbs.append(PI_controller_diagshift(**auto_diag_shift_kwargs))
-        if target_infidelity is not None:
-            # cbs.append(EarlyStopping(target_infidelity, "infidelity", "min"))
-            pass
-
-        run_parameters = {"n_iter": max_iters, "callback": cbs}
-
-        from advanced_drivers.driver import InfidelityOptimizerNG
-
-        super().__init__(
-            driver_class=InfidelityOptimizerNG,
-            build_parameters=build_parameters,
-            run_parameters=run_parameters,
-        )

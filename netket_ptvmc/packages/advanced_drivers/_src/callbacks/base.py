@@ -30,6 +30,9 @@ class AbstractCallback(struct.Pytree, mutable=True):
     def on_run_start(self, step, driver, callbacks):
         pass
 
+    def on_reset_step_end(self, step, driver, callbacks):
+        pass
+
     def on_iter_start(self, step, log_data, driver):
         pass
 

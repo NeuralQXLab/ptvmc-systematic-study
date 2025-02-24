@@ -3,10 +3,11 @@ from functools import partial
 import jax
 
 from netket.optimizer.solver import cholesky
-from netket.utils.types import ScalarOrSchedule, Optimizer, Array
+from netket.utils.types import Array, Optimizer, ScalarOrSchedule
 from netket.operator import AbstractOperator
-from netket.utils import struct
+from netket.utils import struct, timing
 from netket.vqs.mc import MCState, get_local_kernel, get_local_kernel_arguments
+from netket.jax._jacobian.default_mode import JacobianMode
 from netket import jax as nkjax
 
 from netket_pro._src import distributed as distributed
@@ -15,6 +16,7 @@ from advanced_drivers._src.driver.ngd.driver_abstract_ngd import (
     _flatten_samples,
     KernelArgs,
     KernelFun,
+    DeriativesArgs,
 )
 
 
@@ -56,11 +58,12 @@ class VMC_NG(AbstractNGDDriver):
         proj_reg: Optional[ScalarOrSchedule] = None,
         momentum: Optional[ScalarOrSchedule] = None,
         linear_solver_fn: Callable[[Array, Array], Array] = cholesky,
-        evaluation_mode: Optional[str] = None,
         variational_state: MCState = None,
         chunk_size_bwd: Optional[int] = None,
         collect_quadratic_model: bool = False,
+        mode: Optional[JacobianMode] = None,
         use_ntk: bool = False,
+        on_the_fly: bool | None = None,
     ):
         r"""
         Initialize the driver.
@@ -72,13 +75,15 @@ class VMC_NG(AbstractNGDDriver):
             proj_reg: Weight before the matrix `1/N_samples \\bm{1} \\bm{1}^T` used to regularize the linear solver in SPRING.
             momentum: Momentum used to accumulate updates in SPRING.
             linear_solver_fn: Callable to solve the linear problem associated to the updates of the parameters.
-            evaluation_mode: The mode used to compute the jacobian or vjp of the variational state.
-                Can be `'real'` or `'complex'` (defaults to the dtype of the output of the model) if the jacobian is to be computed in full.
-                Can be `'onthefly'` if the jacobian is to be computed on the fly. This last option is only available in the NTK formulation (`use_ntk=True`).
+            mode: The mode used to compute the jacobian or vjp of the variational state.
+                Can be `'real'` or `'complex'` (defaults to the dtype of the output of the model).
+                `real` can be used for real wavefunctions with a sign to further reduce the computational costs.
+            on_the_fly: Whether to compute the QGT or NTK matrix without evaluating the full jacobian. Defaults to True.
+                This ususally lowers the memory requirement and is necessary for large calculations.
+            use_ntk: Whether to use the NTK instead of the QGT for the computation of the updates.
             variational_state: The :class:`netket.vqs.MCState` to be optimised. Other variational states are not supported.
             chunk_size_bwd: The chunk size to use for the backward pass (jacobian or vjp evaluation).
             collect_quadratic_model: Whether to collect the quadratic model. The quantities collected are the linear and quadratic term in the approximation of the loss function. They are stored in the info dictionary of the driver.
-            use_ntk: Whether to use the NTK for the computation of the updates.
 
         Returns:
             The new parameters, the old updates, and the info dictionary.
@@ -91,13 +96,29 @@ class VMC_NG(AbstractNGDDriver):
             proj_reg=proj_reg,
             momentum=momentum,
             linear_solver_fn=linear_solver_fn,
-            evaluation_mode=evaluation_mode,
             variational_state=variational_state,
             chunk_size_bwd=chunk_size_bwd,
             collect_quadratic_model=collect_quadratic_model,
+            mode=mode,
             use_ntk=use_ntk,
+            on_the_fly=on_the_fly,
             minimized_quantity_name="Energy",
         )
+
+    @timing.timed
+    def _prepare_derivatives(self) -> DeriativesArgs:
+        r"""
+        Prepare the function and the samples for the computation of the jacobian, the neural tangent kernel, the vjp or jvp.
+
+        Returns:
+            A tuple containing the function, the parameters, the model state and the samples to be fed
+            to the jacobian, the neural tangent kernel, the vjp or jvp.
+        """
+        samples = _flatten_samples(self.state.samples)
+        afun = self.state._apply_fun
+        params = self.state.parameters
+        model_state = self.state.model_state
+        return afun, params, model_state, samples
 
     def _get_local_estimators_kernel_args(self) -> KernelArgs:
         vstate = self.state

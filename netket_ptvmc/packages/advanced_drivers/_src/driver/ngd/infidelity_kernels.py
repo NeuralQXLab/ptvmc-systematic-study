@@ -46,6 +46,7 @@ def infidelity_UV_kernel_args(
         Vψ_logdistribution,
         variables=Vψ_vars,
         resample_fraction=resample_fraction,
+        chain_name="Vpsi" if V_state is not None else "default",
     )
 
     afun_t, vars_t, samples_t = None, None, None
@@ -57,6 +58,7 @@ def infidelity_UV_kernel_args(
             Uϕ_logdistribution,
             variables=Uϕ_vars,
             resample_fraction=resample_fraction,
+            chain_name="Uphi" if U_target is not None else "default",
         )
     else:
         afun_t = tstate._apply_fun
@@ -65,6 +67,7 @@ def infidelity_UV_kernel_args(
             tstate._model,
             variables=vars_t,
             resample_fraction=resample_fraction,
+            chain_name="default",  # should we change this to Uphi
         )
 
     return (
@@ -112,8 +115,8 @@ def smc_kernel(
     out_shape = samples.shape[:-1]
 
     # equivalent to .reshape(-1, N)
-    samples = jax.lax.collapse(samples, 0, samples.ndim - 1)
-    samples_t = jax.lax.collapse(samples_t, 0, samples_t.ndim - 1)
+    samples = _flatten_samples(samples)
+    samples_t = _flatten_samples(samples_t)
 
     logVψ_x = afun_(samples)
     logUϕ_x = afun_t_(samples)

@@ -3,7 +3,6 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-from jax.sharding import PositionalSharding
 
 
 from netket import jax as nkjax
@@ -83,12 +82,7 @@ def _compute_sr_update(
         num_p = updates.shape[-1] // 2
         updates = updates[:num_p] + 1j * updates[num_p:]
 
-    if distributed.mode() == "sharding":
-        out_shardings = (
-            PositionalSharding(jax.devices()).replicate().reshape((1,) * updates.ndim)
-        ).replicate()
-        updates = jax.lax.with_sharding_constraint(updates, out_shardings)
-
+    updates, token = distributed.allgather(updates, token=token)
     return updates, old_updates, info
 
 

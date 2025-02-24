@@ -1,5 +1,16 @@
+---
+layout: default
+title: My Page with Math
+---
+
 # ptvmc-systematic-study
 This is a package for simulating the real-time dynamics of large-scale quantum spin systems using the projected time-dependent Variational Monte Carlo (p-tVMC) method. The package is based on the results of the [Neural Projected Quantum Dynamics: a systematic study](https://arxiv.org/abs/2410.10720) paper.
+
+<!-- $h=2h_c$\ -->
+![3x3 TFIM quench $h=2h_c$](./docs/movies/animation_2hc.gif)
+
+<!-- $h=h_c/10$\ -->
+<!-- ![3x3 TFIM quench $h=h_c/10$](./docs/movies/animation_0.1hc.gif) -->
 
 ## Installation
 This package is not registered on PyPi, so you must install it directly from GitHub. To do so, you can run the following command:
@@ -12,8 +23,9 @@ git clone https://github.com/NeuralQXLab/ptvmc-systematic-study
 pip install -e ./ptvmc-systematic-study
 ```
 
-## Table of examples
-
+## List of examples
+We provide two main examples for the moment. The most complete one is the ['TFIM dynamics'](./netket_ptvmc/examples/tfim_dynamics.py) example, which is used to produce the data in the animations above. 
+We also provide an ['example'](./netket_ptvmc/examples/state_compression.py) showing a simple code snippet to perform a single state compression. 
 
 
 ## Explanation of the method
@@ -125,13 +137,13 @@ from advanced_drivers.callbacks import PI_controller_diagshift
 from advanced_drivers.driver import InfidelityOptimizerNG
 
 autotune_cb = PI_controller_diagshift(
-	target=0.75,
-	safety_fac=0.9,
+	target=0.9,
+	safety_fac=1.,
 	clip_min=0.5,
 	clip_max=2,
-	diag_shift_min=1e-11,
+	diag_shift_min=1e-9,
 	diag_shift_max=0.1,
-	order=2,
+	order=1,
 	beta_1=0.9,
 	beta_2=0.1,
 )
@@ -178,14 +190,14 @@ To use it, one simply does
             "n_iter": 100,
             "callback": [
                 PI_controller_diagshift(
-                    target=0.75,
-                    safety_fac=0.9,
+                    target=0.9,
+                    safety_fac=1.0,
                     clip_min=0.5,
                     clip_max=2,
-                    diag_shift_min=1e-11,
+                    diag_shift_min=1e-9,
                     diag_shift_max=0.1,
-                    order=2,
-                    beta_1=1,
+                    order=1,
+                    beta_1=0.9,
                     beta_2=0.1,
                 )
             ],

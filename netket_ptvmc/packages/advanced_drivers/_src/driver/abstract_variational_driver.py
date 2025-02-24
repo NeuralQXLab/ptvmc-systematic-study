@@ -170,13 +170,20 @@ class AbstractVariationalDriver(struct.Pytree, mutable=True):
         """
         raise NotImplementedError()  # pragma: no cover
 
-    def reset_step(self):
+    def reset_step(self, hard: bool = False):
         """
         Resets the state of the driver at the beginning of a new step.
 
         This method is called at the beginning of every step in the optimization.
+
+        Args:
+            hard: If True, the reset is a hard reset, resulting in a complete resampling even if `resample_fraction`
+            is not `None`.
         """
-        self.state.reset()
+        if hard:
+            self.state.reset_hard()
+        else:
+            self.state.reset()
 
     def _log_additional_data(self, log_dict: dict):
         """
@@ -324,6 +331,10 @@ class AbstractVariationalDriver(struct.Pytree, mutable=True):
 
                         self.reset_step()
 
+                        callbacks.on_reset_step_end(
+                            self.step_count, step_log_data, self
+                        )
+
                         callbacks.on_compute_update_start(
                             self.step_count, step_log_data, self
                         )
@@ -333,7 +344,7 @@ class AbstractVariationalDriver(struct.Pytree, mutable=True):
                         )
 
                         # Handle repeating a step
-                        if self._reject_step:
+                        if self._reject_step and not self._stop_run:
                             self._reject_step = False
                             self._step_attempt += 1
                             continue
@@ -348,14 +359,14 @@ class AbstractVariationalDriver(struct.Pytree, mutable=True):
                     callbacks.on_legacy_run(self.step_count, step_log_data, self)
                     # callbacks.on_legacy_log(self.step_count, step_log_data, self)
 
+                    if self._stop_run:
+                        break
+
                     callbacks.on_parameter_update(self.step_count, step_log_data, self)
                     self.update_parameters(self._dp)
 
                     callbacks.on_step_end(self.step_count, step_log_data, self)
                     self._step_count += 1
-
-                    if self._stop_run:
-                        break
 
                 callbacks.on_run_end(self.step_count, self)
             except KeyboardInterrupt as error:

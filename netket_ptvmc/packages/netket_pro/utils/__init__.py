@@ -4,8 +4,6 @@ from .operator import ensure_jax_operator
 
 from .utils import cast_grad_type
 
-from .split_hamiltonian import split_hamiltonian
-
 from netket.utils import _hide_submodules
 
 _hide_submodules(__name__)

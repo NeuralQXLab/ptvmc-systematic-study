@@ -11,8 +11,10 @@ from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P
 
 from netket import jax as nkjax
+from netket.jax._jacobian.default_mode import JacobianMode
 from netket.utils import mpi
 from netket.utils.types import Union, Array
+from netket.utils.version_check import module_version
 
 from netket_pro._src import distributed as distributed
 from netket_pro._src.external import neural_tangents as nt
@@ -26,7 +28,6 @@ from netket_pro._src.external import neural_tangents as nt
         "chunk_size",
         "mode",
         "collect_quadratic_model",
-        "rloo",
     ),
 )
 def srt_onthefly(
@@ -38,27 +39,31 @@ def srt_onthefly(
     *,
     diag_shift: Union[float, Array],
     solver_fn: Callable[[Array, Array], Array],
-    mode: nt.NtkImplementation,
-    e_mean: Optional[Union[float, Array]] = None,
+    mode: JacobianMode,
     proj_reg: Optional[Union[float, Array]] = None,
     momentum: Optional[Union[float, Array]] = None,
     old_updates: Optional[Array] = None,
     chunk_size: Optional[int] = None,
     collect_quadratic_model: bool = False,
-    rloo: bool = False,
 ):
     N_mc = local_energies.size * mpi.n_nodes
 
     # Split all parameters into real and imaginary parts separately
     parameters_real, rss = nkjax.tree_to_real(parameters)
 
-    # (Nmc) -> (Nmc,2) - splitting real and imaginary output like 2 classes
+    # complex: (Nmc) -> (Nmc,2) - splitting real and imaginary output like 2 classes
+    # real:    (Nmc) -> (Nmc,)  - no splitting
     def _apply_fn(parameters_real, samples):
         variables = {"params": rss(parameters_real), **model_state}
         log_amp = log_psi(variables, samples)
 
-        re, im = log_amp.real, log_amp.imag
-        return jnp.concatenate((re[:, None], im[:, None]), axis=-1)  # shape [N_mc,2]
+        if mode == "complex":
+            re, im = log_amp.real, log_amp.imag
+            return jnp.concatenate(
+                (re[:, None], im[:, None]), axis=-1
+            )  # shape [N_mc,2]
+        else:
+            return log_amp.real  # shape [N_mc, ]
 
     def jvp_f_chunk(parameters, vector, samples):
         r"""
@@ -70,16 +75,16 @@ def srt_onthefly(
         return acc
 
     # compute rhs of the linear system
-    if e_mean is not None:
-        de = local_energies - e_mean
-    de = de.flatten()
+    local_energies = local_energies.flatten()
+    de = local_energies - jnp.mean(local_energies)
 
-    # TODO: RLOO should be added to ntk calculation and to the final vjp.
     # At the moment the final vjp is centered by centering the auxiliary vector a.
     # This is the same as centering the jacobian but may have larger variance.
-    RLOO = N_mc / (N_mc - 1) if rloo else 1.0
-    dv = RLOO * 2.0 * de / jnp.sqrt(N_mc)  # shape [N_mc,]
-    dv = jnp.stack([jnp.real(dv), jnp.imag(dv)], axis=-1)  # shape [N_mc,2]
+    dv = 2.0 * de / jnp.sqrt(N_mc)  # shape [N_mc,]
+    if mode == "complex":
+        dv = jnp.stack([jnp.real(dv), jnp.imag(dv)], axis=-1)  # shape [N_mc,2]
+    else:
+        dv = jnp.real(dv)  # shape [N_mc,]
 
     token = None
     if momentum is not None:
@@ -94,8 +99,9 @@ def srt_onthefly(
             acc = (acc - avg) / jnp.sqrt(N_mc)
             dv -= momentum * acc
 
-    dv = jax.lax.collapse(dv, 0, 2)  # shape [2*N_mc,]
-    dv, token = distributed.allgather(dv, token=token)  # shape [2*N_mc,]
+    if mode == "complex":
+        dv = jax.lax.collapse(dv, 0, 2)  # shape [2*N_mc,]
+    dv, token = distributed.allgather(dv, token=token)  # shape [2*N_mc,] or [N_mc, ]
 
     # Collect all samples on all MPI ranks, those label the columns of the T matrix
     all_samples, token = distributed.allgather(samples, token=token)
@@ -120,7 +126,10 @@ def srt_onthefly(
                 ).real,
                 _all_samples,
             )
-            return rearrange(ntk_local, "nbatches i j z w -> i (nbatches j) z w")
+            if mode == "complex":
+                return rearrange(ntk_local, "nbatches i j z w -> i (nbatches j) z w")
+            else:
+                return rearrange(ntk_local, "nbatches i j -> i (nbatches j)")
 
     # If we are sharding, use shard_map manually
     if distributed.mode() == "sharding":
@@ -131,46 +140,52 @@ def srt_onthefly(
         in_specs = (P("i", None), P(), P())
         out_specs = P("i", None, None, None)
 
-        sharding_decorator = partial(
-            shard_map,
-            mesh=mesh,
-            in_specs=in_specs,
-            out_specs=out_specs,
-        )
-        jacobian_contraction = sharding_decorator(jacobian_contraction)
+        # By default, I'm not sure whether the jacobian_contraction of NeuralTangents
+        # Is correctly automatically sharded across devices. So we force it to be
+        # sharded with shard map to be sure
+        if module_version("jax") < (0, 4, 38) or module_version("jax") > (0, 5, 1):
+            # shard_map is broken between 0.4.38 and 0.5.1 (maybe)
+            # if you see an error here, try to remove this block
+            jacobian_contraction = shard_map(
+                jacobian_contraction, mesh=mesh, in_specs=in_specs, out_specs=out_specs
+            )
 
     # This disables the nkjax.sharding_decorator in here, which might appear
     # in the apply function inside.
     with nkjax.sharding._increase_SHARD_MAP_STACK_LEVEL():
         ntk_local = jacobian_contraction(samples, all_samples, parameters_real).real
 
-    # shape [N_mc, N_mc, 2, 2]
+    # shape [N_mc, N_mc, 2, 2] or [N_mc, N_mc]
     ntk, token = distributed.allgather(ntk_local, token=token)
-    # shape [2*N_mc, 2*N_mc] checked with direct calculation of J^T J
-    ntk = rearrange(ntk, "i j z w -> (i z) (j w)")
+    if mode == "complex":
+        # shape [2*N_mc, 2*N_mc] checked with direct calculation of J^T J
+        ntk = rearrange(ntk, "i j z w -> (i z) (j w)")
 
     # Center the NTK by multiplying with a carefully designed matrix
     # shape [N_mc, N_mc] symmetric matrix
     delta = jnp.eye(N_mc) - 1 / N_mc
-    # shape [2*N_mc, 2*N_mc]
-    # Gets applied to the sub-blocks corresponding to the real part and imaginary part
-    delta_conc = jnp.zeros((2 * N_mc, 2 * N_mc)).at[0::2, 0::2].set(delta)
-    delta_conc = delta_conc.at[1::2, 1::2].set(delta)
-    delta_conc = delta_conc.at[0::2, 1::2].set(0.0)
-    delta_conc = delta_conc.at[1::2, 0::2].set(0.0)
+    if mode == "complex":
+        # shape [2*N_mc, 2*N_mc]
+        # Gets applied to the sub-blocks corresponding to the real part and imaginary part
+        delta_conc = jnp.zeros((2 * N_mc, 2 * N_mc)).at[0::2, 0::2].set(delta)
+        delta_conc = delta_conc.at[1::2, 1::2].set(delta)
+        delta_conc = delta_conc.at[0::2, 1::2].set(0.0)
+        delta_conc = delta_conc.at[1::2, 0::2].set(0.0)
+    else:
+        delta_conc = delta
 
     # shape [2*N_mc, 2*N_mc] centering the jacobian
     ntk = (delta_conc @ (ntk @ delta_conc)) / N_mc
 
+    # add diag shift
+    ntk_shifted = ntk + diag_shift * jnp.eye(ntk.shape[0])
+
     # add projection regularization
     if proj_reg is not None:
-        ntk = ntk + proj_reg / N_mc
-
-    # add diag shift
-    ntk = ntk + diag_shift * jnp.eye(ntk.shape[0])
+        ntk_shifted = ntk_shifted + proj_reg / N_mc
 
     # some solvers return a tuple, some others do not.
-    aus_vector = solver_fn(ntk, dv)
+    aus_vector = solver_fn(ntk_shifted, dv)
     if isinstance(aus_vector, tuple):
         aus_vector, info = aus_vector
     else:
@@ -188,7 +203,8 @@ def srt_onthefly(
     aus_vector = delta_conc @ aus_vector
 
     # shape [N_mc,2]
-    aus_vector = aus_vector.reshape(-1, 2)
+    if mode == "complex":
+        aus_vector = aus_vector.reshape(-1, 2)
     aus_vector = distributed.shard_replicated(
         aus_vector, axis=0
     )  # shape [N_mc // p.size,2]

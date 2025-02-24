@@ -87,8 +87,8 @@ class AbstractStateCompression(abc.ABC):
 
         .. code-block:: python
 
-            state = self.init_state(vstate, tstate, U, V)
-            out = self.execute(state)
+            compression_state = self.init_state(vstate, tstate, U, V)
+            out = self.execute(compression_state)
 
         Args:
             vstate: The variational state that will encode the compressed state. A copy of this
@@ -104,6 +104,6 @@ class AbstractStateCompression(abc.ABC):
 
         """
 
-        state = self.init_state(vstate, tstate, U, V)
-        out = self.execute(state)
+        compression_state = self.init_state(vstate, tstate, U, V)
+        out = self.execute(compression_state)
         return out

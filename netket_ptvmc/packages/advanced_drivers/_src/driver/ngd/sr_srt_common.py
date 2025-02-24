@@ -6,6 +6,7 @@ import jax.numpy as jnp
 from jax.flatten_util import ravel_pytree
 
 import netket.jax as nkjax
+from netket.stats import mean
 from netket.utils import mpi, timing
 from netket.utils.types import Union, Array, PyTree
 
@@ -13,14 +14,12 @@ from advanced_drivers._src.driver.ngd.sr import _compute_sr_update
 from advanced_drivers._src.driver.ngd.srt import _compute_srt_update
 
 
-@partial(jax.jit, static_argnames=("mode", "rloo"))
+@partial(jax.jit, static_argnames=("mode",))
 def _prepare_input(
     O_L,
     local_grad,
     *,
     mode: str,
-    e_mean: Optional[Union[float, Array]] = None,
-    rloo: bool = False,
 ) -> tuple[jax.Array, jax.Array]:
     r"""
     Prepare the input for the SR/SRt solvers.
@@ -35,18 +34,14 @@ def _prepare_input(
         O_L: The jacobian of the ansatz.
         local_grad: The local energies.
         mode: The mode of the jacobian: `'real'` or `'complex'`.
-        e_mean: The mean energy.
 
     Returns:
         The reshaped jacobian and the reshaped local energies.
     """
     N_mc = O_L.shape[0] * mpi.n_nodes
-    if rloo:
-        N_mc = N_mc - 1
 
-    if e_mean is not None:
-        de = local_grad - e_mean
-    de = de.flatten()
+    local_grad = local_grad.flatten()
+    de = local_grad - mean(local_grad)
 
     O_L = O_L / jnp.sqrt(N_mc)
     dv = 2.0 * de / jnp.sqrt(N_mc)
@@ -76,7 +71,6 @@ def _prepare_input(
         "chunk_size",
         "collect_quadratic_model",
         "use_ntk",
-        "rloo",
     ),
 )
 def _sr_srt_common(
@@ -89,14 +83,12 @@ def _sr_srt_common(
     diag_shift: Union[float, Array],
     solver_fn: Callable[[Array, Array], Array],
     mode: str,
-    e_mean: Optional[Union[float, Array]] = None,
     proj_reg: Optional[Union[float, Array]] = None,
     momentum: Optional[Union[float, Array]] = None,
     old_updates: Optional[PyTree] = None,
     chunk_size: Optional[int] = None,
     collect_quadratic_model: bool = False,
     use_ntk: bool = False,
-    rloo: bool = False,
 ):
     r"""
     Compute the Natural gradient update for the model specified by `log_psi({parameters, model_state}, samples)`
@@ -135,7 +127,7 @@ def _sr_srt_common(
         chunk_size=chunk_size,
     )  # jacobian is centered
 
-    O_L, dv = _prepare_input(jacobians, local_grad, mode=mode, e_mean=e_mean, rloo=rloo)
+    O_L, dv = _prepare_input(jacobians, local_grad, mode=mode)
 
     if old_updates is None and momentum is not None:
         old_updates = jnp.zeros(jacobians.shape[-1], dtype=jacobians.dtype)

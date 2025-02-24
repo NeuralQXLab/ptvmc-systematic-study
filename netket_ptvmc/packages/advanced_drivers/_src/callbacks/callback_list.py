@@ -31,6 +31,10 @@ class CallbackList(AbstractCallback):
         for callback in self.callbacks:
             callback.on_step_start(step, log_data, driver)
 
+    def on_reset_step_end(self, step, log_data, driver):
+        for callback in self.callbacks:
+            callback.on_reset_step_end(step, log_data, driver)
+
     def on_compute_update_start(self, step, log_data, driver):
         for callback in self.callbacks:
             callback.on_compute_update_start(step, log_data, driver)

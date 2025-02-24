@@ -12,8 +12,10 @@ class AbstractDiscretizationState(struct.Pytree):
     Base class holding the state of a discretization.
     """
 
+    stage: int = struct.field(default=0)
+
     def __repr__(self):
-        return "DiscretizationState()"
+        return f"{type(self).__name__}(stage={self.stage})"
 
 
 StepReturnT = tuple[VariationalState, AbstractDiscretizationState, list[dict]]
@@ -73,7 +75,13 @@ class AbstractDiscretization(struct.Pytree):
 
     """
 
-    def init_state(self, generator, t, dt) -> AbstractDiscretizationState:
+    def init_state(
+        self,
+        generator: AbstractOperator,
+        state_t0: VariationalState,
+        t0: float,
+        dt: float,
+    ) -> AbstractDiscretizationState:
         r"""
         Initializes the `DiscretizationState` structure containing supplementary information needed.
 
@@ -145,6 +153,21 @@ class AbstractDiscretization(struct.Pytree):
         """
         raise NotImplementedError
 
+    def start_step(
+        self,
+        generator: AbstractOperator,
+        dt: float,
+        t: float,
+        vstate: VariationalState,
+        solver_state: AbstractDiscretizationState,
+    ) -> tuple[VariationalState, AbstractDiscretizationState]:
+        """
+        Initial modifications to the solver state before all substeps are computed.
+
+        This method is called before the first substep is computed.
+        """
+        return vstate, solver_state
+
     def get_substep(
         self,
         generator: AbstractOperator,
@@ -164,23 +187,23 @@ class AbstractDiscretization(struct.Pytree):
         generator: AbstractOperator,
         dt: float,
         t: float,
-        compression_result: VariationalState,
+        vstate: VariationalState,
         solver_state: AbstractDiscretizationState,
     ) -> tuple[VariationalState, AbstractDiscretizationState]:
         """
         Updates the solver state after a substep has been completed.
         """
-        return compression_result, solver_state.replace(stage=solver_state.stage + 1)
+        return vstate, solver_state.replace(stage=solver_state.stage + 1)
 
     def finish_step(
         self,
         generator: AbstractOperator,
         dt: float,
         t: float,
-        compression_result: VariationalState,
+        vstate: VariationalState,
         solver_state: AbstractDiscretizationState,
-    ) -> VariationalState:
+    ) -> tuple[VariationalState, AbstractDiscretizationState]:
         """
         Final modifications to the solver state after all substeps have been completed.
         """
-        return compression_result
+        return vstate, solver_state

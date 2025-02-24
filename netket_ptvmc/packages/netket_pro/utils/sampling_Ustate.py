@@ -70,26 +70,3 @@ def _lazy_apply_UV_to_afun(vstate, operator, extra_hash_data=None):
         Uψ_logfun._hash = hash((Uψ_logfun._hash, extra_hash_data))
 
     return Uψ_logfun, Uψ_vars, Uψ_logfun
-
-
-#
-# from flax import linen as nn
-#
-# class LogUPsi(nn.Module):
-#     """
-#     A Flax module working a bit like logpsi_U above.
-#
-#     Just set a vs.model_state = {'unitary':{'operator':your_jax_operator}}
-#     """
-#     log_psi : nn.Module
-#
-#     @nn.compact
-#     def __call__(self, x, *args):
-#         U = self.variable('unitary', 'operator', lambda : None)
-#         if U.value is not None:
-#             xp, mels = U.value.get_conn_padded(x)
-#             logpsi_xp = self.log_psi(xp, *args)
-#             return jax.scipy.special.logsumexp(logpsi_xp, axis=-1, b=mels)
-#         else:
-#             return self.log_psi(x, *args)
-#

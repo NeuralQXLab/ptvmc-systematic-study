@@ -1,0 +1,4 @@
+markdown: kramdown
+kramdown:
+  input: GFM
+  math_engine: mathjax

@@ -1,0 +1,66 @@
+from typing import Optional
+import jax.numpy as jnp
+
+from netket.experimental.observable import AbstractObservable
+from netket.operator import AbstractOperator
+from netket.utils.types import DType
+from netket.utils.numbers import is_scalar
+from netket.vqs import VariationalState, FullSumState
+
+
+class InfidelityOperatorUPsi(AbstractObservable):
+    def __init__(
+        self,
+        target_state: VariationalState,
+        U: AbstractOperator,
+        *,
+        cv_coeff: Optional[float] = None,
+        U_dagger: AbstractOperator,
+        is_unitary: bool = False,
+        dtype: Optional[DType] = None,
+    ):
+        super().__init__(target_state.hilbert)
+
+        if not isinstance(target_state, VariationalState):
+            raise TypeError("The first argument should be a variational target_state.")
+
+        if not is_unitary and not isinstance(target_state, FullSumState):
+            raise ValueError(
+                "Only works with unitary gates. If the gate is non unitary "
+                "then you must sample from it. Use a different operator."
+            )
+
+        if cv_coeff is not None:
+            cv_coeff = jnp.array(cv_coeff)
+
+            if (not is_scalar(cv_coeff)) or jnp.iscomplex(cv_coeff):
+                raise TypeError("`cv_coeff` should be a real scalar number or None.")
+
+            if isinstance(target_state, FullSumState):
+                cv_coeff = None
+
+        self._target = target_state
+        self._cv_coeff = cv_coeff
+        self._dtype = dtype
+
+        self._U = U
+        self._U_dagger = U_dagger
+
+    @property
+    def target(self):
+        return self._target
+
+    @property
+    def cv_coeff(self):
+        return self._cv_coeff
+
+    @property
+    def dtype(self):
+        return self._dtype
+
+    @property
+    def is_hermitian(self):
+        return True
+
+    def __repr__(self):
+        return f"InfidelityOperatorUPsi(target=U@{self.target}, U={self._U}, cv_coeff={self.cv_coeff})"

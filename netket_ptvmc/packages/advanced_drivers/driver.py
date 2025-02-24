@@ -1,6 +1,5 @@
 __all__ = [
     "AbstractVariationalDriver",
-    "VMC",
     "AbstractNGDDriver",
     "InfidelityOptimizerNG",
     "VMC_NG",
@@ -8,9 +7,6 @@ __all__ = [
 
 from advanced_drivers._src.driver.abstract_variational_driver import (
     AbstractVariationalDriver as AbstractVariationalDriver,
-)
-from advanced_drivers._src.driver.vmc import (
-    VMC as VMC,
 )
 
 from advanced_drivers._src.driver.ngd.driver_abstract_ngd import (

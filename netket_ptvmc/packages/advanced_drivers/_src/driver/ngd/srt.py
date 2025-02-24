@@ -50,12 +50,16 @@ def _compute_srt_update(
     matrix_side = matrix.shape[-1]  # * it can be ns or 2*ns, depending on mode
 
     if mpi.rank == 0:
-        matrix = matrix + diag_shift * jnp.eye(matrix_side, dtype=matrix.dtype)
+        shifted_matrix = jax.lax.add(
+            matrix, diag_shift * jnp.eye(matrix_side, dtype=matrix.dtype)
+        )
 
         if proj_reg is not None:
-            matrix += jnp.full_like(matrix, proj_reg / matrix_side)
+            shifted_matrix = jax.lax.add(
+                shifted_matrix, jnp.full_like(shifted_matrix, proj_reg / matrix_side)
+            )
 
-        aus_vector = solver_fn(matrix, dv)
+        aus_vector = solver_fn(shifted_matrix, dv)
 
         # Some solvers return a tuple, some others do not.
         if isinstance(aus_vector, tuple):

@@ -1,6 +1,5 @@
 from typing import Any
 
-
 from netket.utils import struct, timing
 
 from advanced_drivers._src.callbacks.base import AbstractCallback

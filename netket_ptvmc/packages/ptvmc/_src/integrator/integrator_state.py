@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 import jax
 import jax.numpy as jnp
 
+from netket.operator import DiscreteJaxOperator
 from netket.utils import struct, KahanSum
 from netket.vqs import VariationalState
 
@@ -11,32 +12,6 @@ from netket_pro import distributed
 
 if TYPE_CHECKING:
     from ptvmc._src.integrator.integrator_state import AbstractIntegratorState
-
-# class IntegratorFlags(IntFlag):
-#     """
-#     Enum class containing flags for signaling solver information from within `jax.jit`ed code.
-#     """
-
-#     NONE = 0
-#     INFO_STEP_ACCEPTED = auto()
-#     WARN_MIN_DT = auto()
-#     WARN_MAX_DT = auto()
-#     ERROR_INVALID_DT = auto()
-
-#     WARNINGS_FLAGS = WARN_MIN_DT | WARN_MAX_DT
-#     ERROR_FLAGS = ERROR_INVALID_DT
-
-#     __MESSAGES__ = {
-#         INFO_STEP_ACCEPTED: "Step accepted",
-#         WARN_MIN_DT: "dt reached lower bound",
-#         WARN_MAX_DT: "dt reached upper bound",
-#         ERROR_INVALID_DT: "Invalid value of dt",
-#     }
-
-#     def message(self) -> str:
-#         """Returns a string with a description of the currently set flags."""
-#         msg = self.__MESSAGES__
-#         return ", ".join(msg[flag] for flag in msg.keys() if flag & self != 0)
 
 
 class IntegratorState(struct.Pytree):
@@ -75,13 +50,10 @@ class IntegratorState(struct.Pytree):
         y,
         t,
         solver,
-        # compression_algorithm,
         *,
         step_no=0,
         step_no_total=0,
-        # last_norm=None,
-        # last_scaled_error=None,
-        # flags=IntegratorFlags.INFO_STEP_ACCEPTED,
+        generator: DiscreteJaxOperator = None,
     ):
         r"""
         Initialize the state of the Integrator.
@@ -101,7 +73,6 @@ class IntegratorState(struct.Pytree):
             flags: The flags containing information on the solver state.
         """
         step_dtype = jnp.int64 if jax.config.x64_enabled else jnp.int32
-        # err_dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
 
         self.step_no = distributed.declare_replicated_array(
             jnp.asarray(step_no, dtype=step_dtype)
@@ -119,35 +90,4 @@ class IntegratorState(struct.Pytree):
 
         self.y = y
 
-        # if last_norm is not None:
-        #     last_norm = jnp.asarray(last_norm, dtype=err_dtype)
-        # self.last_norm = last_norm
-        # if last_scaled_error is not None:
-        #     last_scaled_error = jnp.asarray(last_scaled_error, dtype=err_dtype)
-        # self.last_scaled_error = last_scaled_error
-
-        # # Todo: if making SolverFlag a proper pytree this can be restored.
-        # # if not isinstance(flags, SolverFlags):
-        # #    raise TypeError(f"flags must be SolverFlags but got {type(flags)} : {flag}")
-        # self.flags = flags
-
-        self.solver_state = solver.init_state()
-
-    # def __repr__(self) -> str:
-    #     try:
-    #         dt = f"{self.dt:.2e}"
-    #         last_norm = f", {self.last_norm:.2e}" if self.last_norm is not None else ""
-    #         accepted = f", {'A' if self.accepted else 'R'}"
-    #     except (ValueError, TypeError):
-    #         dt = f"{self.dt}"
-    #         last_norm = f"{self.last_norm}"
-    #         accepted = f"{IntegratorFlags.INFO_STEP_ACCEPTED}"
-
-    #     solver_state = f", solver_state={self.solver_state}"
-
-    #     return f"IntegratorState(step_no(total)={self.step_no}({self.step_no_total}), t={self.t.value}, dt={dt}{last_norm}{accepted}{solver_state})"
-
-    # @property
-    # def accepted(self) -> bool:
-    #     """Boolean indicating whether the last step was accepted."""
-    #     return IntegratorFlags.INFO_STEP_ACCEPTED & self.flags != 0
+        self.solver_state = solver.init_state(generator, y, t, dt)

@@ -32,15 +32,34 @@ the fields managed by netket pro.
 """
 
 
-#
+def _get_default_name(distribution):
+    if isinstance(distribution, partial):
+        return _get_default_name(distribution.func)
+    if hasattr(distribution, "__name__"):
+        return distribution.__module__ + "." + distribution.__name__
+    else:
+        typ = type(distribution)
+        return typ.__module__ + "." + typ.__name__
+
+
+model_name = "default"
+
+
 @add_method(MCState)
-def init_sampler_distribution(self, distribution=None, *, variables=None, seed=None):
+def init_sampler_distribution(
+    self, distribution=None, *, variables=None, seed=None, chain_name=None
+):
     """
     Substitute for MCState.sampler.setter ... in the original code, called when sampling
     a new distribution for the first time.
     """
     if distribution is None:
         distribution = self._model
+        if chain_name is None:
+            chain_name = model_name
+    if chain_name is None:
+        chain_name = _get_default_name(distribution)
+
     if variables is None:
         variables = self.variables
     if seed is None:
@@ -48,16 +67,20 @@ def init_sampler_distribution(self, distribution=None, *, variables=None, seed=N
             self._sampler_seed, seed = jax.random.split(self._sampler_seed)
 
     sampler_state = self.sampler.init_state(distribution, variables, seed=seed)
-    self.sampler_states[distribution] = sampler_state
-    self._sampler_states_previous[distribution] = sampler_state
+    self.sampler_states[chain_name] = sampler_state
+    self._sampler_states_previous[chain_name] = sampler_state
     return sampler_state
 
 
 @attach_method(MCState)
-def init(self, seed=None, dtype=None):
+def __init__(self, *args, **kwargs):
+    # Dictionary holding the sampler_states for each distribution (equivalent to .sampler_state)
     self.sampler_states = {}
+    # Dictionary holding the previous sampler_states for each distribution (equivalent to ._sampler_state_previous)
     self._sampler_states_previous = {}
+    # Dictionary holding the samples for each distribution (equivalent to .samples, not serialized)
     self._samples_distributions = {}
+    # Dictionary holding the samples of past distributions for resampling (equivalent to ._samples, not serialized)
     self._samples_distribution_resampling_cache = {}
     if not hasattr(self, "_resample_fraction"):
         self._resample_fraction = None
@@ -74,7 +97,7 @@ def reset(self):
     # The code in init should in __init__, because init
     # is not always called, but do what we can do here...
     if not hasattr(self, "_samples_distributions"):
-        init(self)
+        __init__(self)
     # Do this in the sampler code itself
     # for distribution in self._samples_distribution_resampling_cache:
     #    self._samples_distribution_resampling_cache[
@@ -88,7 +111,7 @@ def reset(self):
 def reset_hard(self):
     """Removes the samples used for resampling."""
     self.reset()
-    self._samples_distribution_resampling_cache = {}
+    self._samples_distribution_resampling_cache.clear()
 
 
 @attach_property(MCState, name="sampler", mode="set", prepend=True)
@@ -119,6 +142,7 @@ def sample_distribution(
     n_samples: Optional[int] = None,
     n_discard_per_chain: Optional[int] = None,
     resample_fraction: Optional[float] = None,
+    chain_name: Optional[str] = None,
 ) -> jnp.ndarray:
     r"""Returns the samples for this model given a distribution.
 
@@ -154,6 +178,14 @@ def sample_distribution(
     """
     if distribution is None:
         distribution = self._model
+        if chain_name is None:
+            chain_name = model_name
+    if chain_name is None:
+        if distribution is self._model:
+            chain_name = model_name
+        else:
+            chain_name = _get_default_name(distribution)
+
     if variables is None:
         variables = self.variables
     if resample_fraction is None:
@@ -164,7 +196,6 @@ def sample_distribution(
     else:
         if chain_length is None:
             chain_length = compute_chain_length(self.sampler.n_chains, n_samples)
-
         if self.chunk_size is not None:
             check_chunk_size(chain_length * self.sampler.n_chains, self.chunk_size)
 
@@ -172,41 +203,49 @@ def sample_distribution(
         n_discard_per_chain = self.n_discard_per_chain
 
     if resample_fraction is not None:
-        if distribution not in self._samples_distribution_resampling_cache:
-            self._samples_distribution_resampling_cache[distribution] = None
+        if chain_name not in self._samples_distribution_resampling_cache:
+            self._samples_distribution_resampling_cache[chain_name] = None
 
         previous_samples = self._samples_distribution_resampling_cache.get(
-            distribution, None
+            chain_name, None
         )
         if previous_samples is None:
             chain_length_to_sample = chain_length
         else:
-            chain_length_to_sample = min(int(chain_length * resample_fraction), 1)
+            chain_length_to_sample = max(int(chain_length * resample_fraction), 1)
     else:
         chain_length_to_sample = chain_length
+        # If we stop to use resample_fraction, we can remove the cache
+        if chain_name in self._samples_distribution_resampling_cache:
+            del self._samples_distribution_resampling_cache[chain_name]
 
-    sampler_state = self.sampler_states.get(distribution, None)
+    sampler_state = self.sampler_states.get(chain_name, None)
 
     if sampler_state is None:
         sampler_state = self.init_sampler_distribution(
             distribution,
             variables=variables,
             seed=seed,
+            chain_name=chain_name,
         )
+
     # Store the previous sampler state, for serialization purposes
-    self._sampler_states_previous[distribution] = sampler_state
+    self._sampler_states_previous[chain_name] = sampler_state
 
     sampler_state = self.sampler.reset(distribution, variables, sampler_state)
 
     with timing.timed_scope(f"MCState.sample_distribution #{hash(distribution)}"):
-        if self.n_discard_per_chain > 0:
-            with timing.timed_scope("sampling n_discarded samples"):
+        if n_discard_per_chain > 0:
+            with timing.timed_scope("sampling n_discarded samples") as timer:
                 _, sampler_state = self.sampler.sample(
                     distribution,
                     variables,
                     state=sampler_state,
                     chain_length=n_discard_per_chain,
                 )
+                # This won't actually block unless we are really timing
+                timer.block_until_ready(_)
+
         samples, sampler_state = self.sampler.sample(
             distribution,
             variables,
@@ -214,16 +253,16 @@ def sample_distribution(
             chain_length=chain_length_to_sample,
         )
 
-        if resample_fraction is not None:
-            if previous_samples is not None:
-                samples = _concatenate_samples(
-                    previous_samples, samples, chain_length_to_sample
-                )
-            # Store the samples for resampling only a part next time.
-            self._samples_distribution_resampling_cache[distribution] = samples
+    if resample_fraction is not None:
+        if previous_samples is not None:
+            samples = _concatenate_samples(
+                previous_samples, samples, chain_length_to_sample
+            )
+        # Store the samples for resampling only a part next time.
+        self._samples_distribution_resampling_cache[chain_name] = samples
 
-    self.sampler_states[distribution] = sampler_state
-    self._samples_distributions[distribution] = samples
+    self.sampler_states[chain_name] = sampler_state
+    self._samples_distributions[chain_name] = samples
 
     return samples
 
@@ -236,6 +275,7 @@ def samples_distribution(
     seed: Optional[int] = None,
     *,
     resample_fraction: Optional[float] = None,
+    chain_name: Optional[str] = None,
 ) -> jnp.ndarray:
     r"""Returns the samples for this model given a distribution.
 
@@ -268,16 +308,24 @@ def samples_distribution(
     """
     if distribution is None:
         distribution = self._model
+        if chain_name is None:
+            chain_name = model_name
+    if chain_name is None:
+        if distribution is self._model:
+            chain_name = model_name
+        else:
+            chain_name = _get_default_name(distribution)
 
-    samples = self._samples_distributions.get(distribution, None)
+    samples = self._samples_distributions.get(chain_name, None)
     if samples is None:
         self.sample_distribution(
             distribution,
             variables,
             resample_fraction=resample_fraction,
             seed=seed,
+            chain_name=chain_name,
         )
-        samples = self._samples_distributions[distribution]
+        samples = self._samples_distributions[chain_name]
     return samples
 
 
@@ -343,12 +391,12 @@ def samples(self) -> jax.Array:
 
 @property
 def sampler_state(self) -> Optional[SamplerState]:
-    return self.sampler_states.get(self._model, None)
+    return self.sampler_states.get(model_name, None)
 
 
 @sampler_state.setter
 def sampler_state(self, value):
-    self.sampler_states[self._model] = value
+    self.sampler_states[model_name] = value
 
 
 add_method(sampler_state, MCState)
@@ -356,12 +404,12 @@ add_method(sampler_state, MCState)
 
 @property
 def _sampler_state_previous(self):
-    return self._sampler_states_previous.get(self._model, None)
+    return self._sampler_states_previous.get(model_name, None)
 
 
 @_sampler_state_previous.setter
 def _sampler_state_previous(self, value):
-    self._sampler_states_previous[self._model] = value
+    self._sampler_states_previous[model_name] = value
 
 
 add_method(_sampler_state_previous, MCState)
@@ -369,12 +417,12 @@ add_method(_sampler_state_previous, MCState)
 
 @property
 def _samples(self):
-    return self._samples_distributions.get(self._model, None)
+    return self._samples_distributions.get(model_name, None)
 
 
 @_samples.setter
 def _samples(self, value):
-    self._samples_distributions[self._model] = value
+    self._samples_distributions[model_name] = value
 
 
 add_method(_samples, MCState, override=True)

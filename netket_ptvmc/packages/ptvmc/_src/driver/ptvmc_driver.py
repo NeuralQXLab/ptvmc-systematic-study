@@ -31,6 +31,7 @@ from ptvmc._src.solver.base import AbstractDiscretization
 from ptvmc._src.compression.abstract_compression import AbstractStateCompression
 from ptvmc._src.callbacks.progressbar import DynamicsIntegrationProgressBarCallback
 from ptvmc._src.callbacks.recordtime import RecordTimeCallback
+from ptvmc._src.callbacks.save_state import SaveState
 from ptvmc._src.integrator.integrator import Integrator
 from ptvmc._src.integrator.integration_params import IntegrationParameters
 
@@ -112,8 +113,10 @@ class PTVMCDriver(AbstractVariationalDriver):
         out: Optional[Iterable[AbstractLog]] = (),
         obs: Optional[dict[str, AbstractObservable]] = None,
         *,
-        tstops: Optional[list[float]] = None,
         show_progress: bool = True,
+        save_path: Optional[str] = None,
+        save_every: int = 1,
+        save_prefix: str = "state",
         callback: Callable[
             [int, dict, "AbstractVariationalDriver"], bool
         ] = lambda *x: True,
@@ -167,6 +170,9 @@ class PTVMCDriver(AbstractVariationalDriver):
             )
 
         callback_list.append(RecordTimeCallback())
+
+        if save_path is not None:
+            callback_list.append(SaveState(save_path, save_every, prefix=save_prefix))
 
         callbacks = CallbackList(callback_list)
 
@@ -227,7 +233,7 @@ class PTVMCDriver(AbstractVariationalDriver):
                     raise
             except Exception as error:
                 callbacks.on_run_error(self.step_count, error, self)
-                raise error
+                raise
 
         if timeit:
             self._timer = timer

@@ -1,10 +1,8 @@
 from typing import Any, Callable, Optional
-import warnings
-from abc import abstractproperty
+from abc import abstractmethod
 
 import jax
 from jax.flatten_util import ravel_pytree
-from flax import serialization
 
 from netket import jax as nkjax
 from netket.stats import statistics
@@ -12,6 +10,7 @@ from netket.optimizer.solver import cholesky
 from netket.vqs import MCState, FullSumState
 from netket.utils import timing, struct
 from netket.utils.types import ScalarOrSchedule, Optimizer, Array, PyTree
+from netket.jax._jacobian.default_mode import JacobianMode
 
 from advanced_drivers._src.driver.abstract_variational_driver import (
     AbstractVariationalDriver,
@@ -19,18 +18,17 @@ from advanced_drivers._src.driver.abstract_variational_driver import (
 from advanced_drivers._src.driver.ngd.sr_srt_common import sr, srt
 from advanced_drivers._src.driver.ngd.srt_onthefly import srt_onthefly
 
-from netket_pro._src.external import neural_tangents as nt
-
-JACOBIAN_CONTRACTION = nt.NtkImplementation.JACOBIAN_CONTRACTION
 
 ApplyFun = Callable[[PyTree, Array], Array]
-KernelFun = Callable[[PyTree, Array, PyTree], tuple[Array, Array]]
-KernelArgs = tuple[ApplyFun, PyTree, Array, Any, Any]
+KernelArgs = tuple[ApplyFun, PyTree, Array, tuple[Any, ...]]
+KernelFun = Callable[[PyTree, Array], KernelArgs]
+DeriativesArgs = tuple[ApplyFun, PyTree, PyTree, Array]
 
 
 @jax.jit
 def _flatten_samples(x):
-    return jax.lax.collapse(x, 0, 2)
+    # return x.reshape(-1, x.shape[-1])
+    return jax.lax.collapse(x, 0, x.ndim - 1)
 
 
 class AbstractNGDDriver(AbstractVariationalDriver):
@@ -94,10 +92,10 @@ class AbstractNGDDriver(AbstractVariationalDriver):
     no significant performance penalty.
     """
 
-    _evaluation_mode: str = struct.field(serialize=False)
+    _mode: str = struct.field(serialize=False)
     _chunk_size_bwd: Optional[int] = struct.field(serialize=False)
     _use_ntk: bool = struct.field(serialize=False)
-    _rloo: bool = struct.field(serialize=False)
+    _on_the_fly: bool = struct.field(serialize=False)
     _collect_quadratic_model: bool = struct.field(serialize=False)
     _linear_solver_fn: Any = struct.field(serialize=False)
 
@@ -120,12 +118,12 @@ class AbstractNGDDriver(AbstractVariationalDriver):
         proj_reg: Optional[ScalarOrSchedule] = None,
         momentum: Optional[ScalarOrSchedule] = None,
         linear_solver_fn: Callable[[Array, Array], Array] = cholesky,
-        evaluation_mode: Optional[str] = None,
         variational_state: MCState = None,
         chunk_size_bwd: Optional[int] = None,
         collect_quadratic_model: bool = False,
+        mode: Optional[JacobianMode] = None,
         use_ntk: bool = False,
-        rloo: bool = False,
+        on_the_fly: bool | None = None,
         minimized_quantity_name: str = "Loss",
     ):
         r"""
@@ -137,16 +135,15 @@ class AbstractNGDDriver(AbstractVariationalDriver):
             proj_reg: The regularization parameter for the projection of the updates.
             momentum: The momentum parameter for the optimizer.
             linear_solver_fn: The linear solver function to use for the NGD solver.
-            evaluation_mode: The mode used to compute the jacobian of the variational state.
-            Can be `'real'` or `'complex'` if the full jacobian needs to be evaluated. It
-            can be `'onthefly'` if the jacobian is to be computed on the fly.
-            This last option is only available in the NTK formulation (`use_ntk=True`).
+            mode: The mode used to compute the jacobian of the variational state.
+                Can be `'real'` or `'complex'`.
+            on_the_fly: Whether to compute the QGT or NTK using lazy evaluation methods.
+                This usually requires less memory.
             variational_state: The variational state to optimize.
             chunk_size_bwd: The number of rows of the NTK evaluated in a single sweep.
             collect_quadratic_model: Whether to collect the quadratic model of the loss.
             use_ntk: Wheter to compute the updates using the Neural Tangent Kernel (NTK)
             instead of the Quantum Geometric Tensor (QGT).
-            rloo: Whether to use the RLOO correction to the covariance estimator.
             minimized_quantity_name: The name of the minimized quantity.
         """
         super().__init__(
@@ -154,11 +151,16 @@ class AbstractNGDDriver(AbstractVariationalDriver):
             optimizer,
             minimized_quantity_name=minimized_quantity_name,
         )
-
         if isinstance(variational_state, FullSumState):
             raise TypeError(
                 "NGD drivers do not support FullSumState. Please use 'standard' drivers with SR."
             )
+
+        if on_the_fly is None:
+            if use_ntk:
+                on_the_fly = True
+            else:
+                on_the_fly = False
 
         self.diag_shift = diag_shift
         self.proj_reg = proj_reg
@@ -166,8 +168,9 @@ class AbstractNGDDriver(AbstractVariationalDriver):
 
         self.chunk_size_bwd = chunk_size_bwd
         self._use_ntk = use_ntk
-        self._rloo = rloo
-        self.evaluation_mode = evaluation_mode
+        self.mode = mode
+        self.on_the_fly = on_the_fly
+
         self._collect_quadratic_model = collect_quadratic_model
         self._linear_solver_fn = linear_solver_fn
 
@@ -189,6 +192,28 @@ class AbstractNGDDriver(AbstractVariationalDriver):
                 "Hybrid structures are not yet supported (but we would welcome contributions. Get in touch with us!)"
             )
 
+    def _get_local_estimators_kernel_args(self) -> KernelArgs:
+        r"""
+        Get the arguments to pass to the local estimator kernel.
+
+        This will be called by the method `local_estimators` to compute the local estimators following the schema below.
+
+        .. code-block:: python
+
+            afun, variables, σ, extra_args = self._get_local_estimators_kernel_args()
+            local_grad, local_loss = self._kernel(afun, variables, σ, *extra_args)
+
+        .. note::
+
+            This method should be implemented by subclasses.
+
+        Returns:
+            A Tuple with 4 elements: afun, vars, σ, extra_args.
+            The first three elements are the log-wavefunction, the variable and the samples of the variational state.
+            The second to last element is any argument that can be fed as input to the local_kernel.
+        """
+        raise NotImplementedError()  # pragma: no cover
+
     @timing.timed
     def local_estimators(
         self, samples: Optional[Array] = None, parameters: Optional[PyTree] = None
@@ -197,6 +222,11 @@ class AbstractNGDDriver(AbstractVariationalDriver):
         Compute the per-sample (local) estimators for the gradient and loss. This method should be implemented by subclasses.
 
         The two match when minimising the energy, but can differ, as is the case of some Infidelity estimators.
+
+        .. note::
+
+            This method uses the log-wavefunction, the variables and the samples obtained by calling the method
+            `_get_local_estimators_kernel_args`. This method should be implemented by subclasses.
 
         Args:
             samples: The samples to use for the computation of the local estimators. If `None`, the current samples are used.
@@ -222,41 +252,47 @@ class AbstractNGDDriver(AbstractVariationalDriver):
         )
         return local_grad, local_loss
 
-    def _get_local_estimators_kernel_args(self) -> KernelArgs:
-        r"""
-        Get the arguments to pass to the local estimator kernel.
-
-        Returns:
-            A Tuple with 5 elements: afun, vars, σ, extra_args, extra_kwargs.
-            The first three elements are the log-wavefunction, the variable and the samples of the variational state.
-            The second to last element is any argument that can be fed as input to the local_kernel.
-            The last element is any keyword argument that can be fed as input to the local_kernel.
-        """
-        raise NotImplementedError()  # pragma: no cover
-
-    @abstractproperty
+    @property
+    @abstractmethod
     def _kernel(self) -> KernelFun:
         r"""
         The kernel function to compute the local estimators.
 
+        .. note::
+
+            This method should be implemented by subclasses.
+
+        This resulting kernel function should be called as follows:
+
+        .. code-block:: python
+
+            afun, variables, σ, extra_args = self._get_local_estimators_kernel_args()
+            local_grad, local_loss = self._kernel(afun, variables, σ, *extra_args)
+
         Returns:
-            A function that takes the log-wavefunction, the variables, the samples and any extra argument, and returns the local gradient and the local loss.
+            A function that takes the log-wavefunction, the variables, the samples and any extra argument,
+            and returns the local gradient and the local loss.
         """
         raise NotImplementedError()
 
     @timing.timed
-    def _prepare_derivatives(self):
+    def _prepare_derivatives(self) -> DeriativesArgs:
         r"""
-        Prepare the function and the samples for the computation of the jacobian, the neural tangent kernel, the vjp or jvp.
+        Prepare the function and the samples for the computation of the jacobian, the neural tangent kernel,
+        the vjp or jvp.
+
+        This method difers from `_get_local_estimators_kernel_args` in that it is not used to compute the local
+        estimators, but to compute the NGD update. In general, this should be the same function as the ones
+        used to compute the local estimator of the gradient, but not necessarily.
+
+        .. note::
+
+            This method should be implemented by subclasses.
 
         Returns:
             A tuple containing the function, the parameters, the model state and the samples to be fed to the jacobian, the neural tangent kernel, the vjp or jvp.
         """
-        samples = _flatten_samples(self.state.samples)
-        afun = self.state._apply_fun
-        params = self.state.parameters
-        model_state = self.state.model_state
-        return afun, params, model_state, samples
+        raise NotImplementedError()
 
     @timing.timed
     def compute_loss_and_update(self):
@@ -283,14 +319,12 @@ class AbstractNGDDriver(AbstractVariationalDriver):
             samples,
             diag_shift=diag_shift,
             solver_fn=self._linear_solver_fn,
-            mode=self.evaluation_mode,
-            e_mean=self._loss_stats.Mean,
+            mode=self.mode,
             proj_reg=proj_reg,
             momentum=momentum,
             old_updates=self._old_updates,
             chunk_size=self.chunk_size_bwd,
             collect_quadratic_model=self.collect_quadratic_model,
-            rloo=self.rloo,
         )
 
         return self._loss_stats, self._dp
@@ -318,7 +352,7 @@ class AbstractNGDDriver(AbstractVariationalDriver):
             log_dict["info"] = self.info
 
     @property
-    def evaluation_mode(self) -> str:
+    def mode(self) -> JacobianMode:
         """
         The mode used to compute the jacobian of the variational state. Can be `'real'`, `'complex'`, or 'onthefly'.
 
@@ -328,20 +362,13 @@ class AbstractNGDDriver(AbstractVariationalDriver):
 
         This internally uses :func:`netket.jax.jacobian`. See that function for a more complete documentation.
         """
-        return self._evaluation_mode
+        return self._mode
 
-    @evaluation_mode.setter
-    def evaluation_mode(self, mode: Optional[str]):
+    @mode.setter
+    def mode(self, mode: str | JacobianMode | None):
         # TODO: Add support for 'onthefly' mode
         # At the moment, onthefly is only supported for use_ntk=True.
         # We raise a warning if the user tries to use it with use_ntk=False.
-        if mode == "onthefly" and not self.use_ntk:
-            warnings.warn(
-                "`evaluation_mode='onthefly'` is only supported when `use_ntk=True`. "
-                "We plan to support this mode for the standard NGD in the future."
-            )
-            mode = None
-
         if mode is None:
             mode = nkjax.jacobian_default_mode(
                 self.state._apply_fun,
@@ -354,26 +381,54 @@ class AbstractNGDDriver(AbstractVariationalDriver):
         # TODO: Add support for 'holomorphic' mode
         # At the moment we only support 'real' and 'complex' modes for jacobian.
         # We raise an error if the user tries to use 'holomorphic' mode.
-        if mode not in ["complex", "real", "onthefly"]:
+        if mode not in ["complex", "real"]:
             raise ValueError(
-                "`evaluation_mode` only supports 'jacobian_real' for real-valued wavefunctions, and 'jacobian_complex' for complex valued wave functions. "
-                "`holomorphic` is not yet supported, but could be contributed in the future. "
-                "We also support 'onthefly' mode, which computes the jacobian on the fly. "
-                "At the moment, this is only supported for `use_ntk=True`."
+                "`mode` only supports 'jacobian_real' for real-valued wavefunctions, and 'jacobian_complex' for complex valued wave functions."
+                "`holomorphic` is not yet supported, but could be contributed in the future. \n"
+                f"You gave {mode}"
             )
 
-        if mode == "onthefly":
-            self._evaluation_mode = JACOBIAN_CONTRACTION
-        else:
-            self._evaluation_mode = mode
+        self._mode = mode
+
+    @property
+    def on_the_fly(self) -> bool:
+        """
+        Whether
+        """
+        return self._on_the_fly
+
+    @on_the_fly.setter
+    def on_the_fly(self, value: bool):
+        if value and not self.use_ntk:
+            raise ValueError(
+                """
+                `onthefly` is only supported when `use_ntk=True`.
+                We plan to support this mode for the standard NGD in the future.
+                In the meantime, use a standard VMC+SR QGTOnTheFly.
+                """
+            )
+        self._on_the_fly = value
+
+    @property
+    def use_ntk(self) -> bool:
+        r"""
+        Whether to use the Neural Tangent Kernel (NTK) instead of the Quantum Geometric Tensor (QGT) to compute the update.
+        """
+        return self._use_ntk
 
     @property
     def update_fn(self) -> Callable:
         """Returns the function to compute the NGD update based on the evaluation mode."""
-        if self.evaluation_mode in ["complex", "real"]:
-            return srt if self.use_ntk else sr
-        elif self.evaluation_mode == JACOBIAN_CONTRACTION:
-            return srt_onthefly
+        if self.use_ntk:
+            if self.on_the_fly:
+                return srt_onthefly
+            else:
+                return srt
+        else:
+            if self.on_the_fly:
+                raise NotImplementedError
+            else:
+                return sr
 
     @property
     def chunk_size_bwd(self) -> int:
@@ -391,20 +446,6 @@ class AbstractNGDDriver(AbstractVariationalDriver):
         if not isinstance(value, int | None):
             raise TypeError("chunk_size must be an integer or None")
         self._chunk_size_bwd = value
-
-    @property
-    def use_ntk(self) -> bool:
-        r"""
-        Whether to use the Neural Tangent Kernel (NTK) instead of the Quantum Geometric Tensor (QGT) to compute the update.
-        """
-        return self._use_ntk
-
-    @property
-    def rloo(self) -> bool:
-        r"""
-        Use leave-one-out strategy for the centering of local estimator and jacobian.
-        """
-        return self._rloo
 
     @property
     def collect_quadratic_model(self) -> bool:
@@ -425,35 +466,3 @@ class AbstractNGDDriver(AbstractVariationalDriver):
         if not isinstance(value, bool):
             raise TypeError("collect_quadratic_model must be a boolean")
         self._collect_quadratic_model = value
-
-
-# serialization
-def serialize_AbstractVariationalDriver(driver):
-    state_dict = {
-        "state": serialization.to_state_dict(driver._variational_state),
-        "target": serialization.to_state_dict(driver._target),
-        "optimizer_state": serialization.to_state_dict(driver._optimizer_state),
-        "loss_stats": serialization.to_state_dict(driver._loss_stats),
-        "step_count": driver._step_count,
-    }
-    return state_dict
-
-
-def deserialize_AbstractVariationalDriver(driver, state_dict):
-    import copy
-
-    new_driver = copy.copy(driver)
-    new_driver._variational_state = serialization.from_state_dict(
-        driver._variational_state, state_dict["state"]
-    )
-    new_driver._target = serialization.from_state_dict(
-        driver._target, state_dict["target"]
-    )
-    new_driver._optimizer_state = serialization.from_state_dict(
-        driver._optimizer_state, state_dict["optimizer_state"]
-    )
-    new_driver._loss_stats = serialization.from_state_dict(
-        driver._loss_stats, state_dict["loss_stats"]
-    )
-    new_driver._step_count = state_dict["step_count"]
-    return new_driver
