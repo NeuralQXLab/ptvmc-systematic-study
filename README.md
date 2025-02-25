@@ -7,6 +7,17 @@ This is a package for simulating the real-time dynamics of large-scale quantum s
 <!-- $h=h_c/10$\ -->
 ![3x3 TFIM quench $h=h_c/10$](./docs/movies/animation_0.1hc.gif)
 
+## Content of the repository
+
+This repository contains the following things:
+ - `Analyics` : a set of Mathematica notebooks that can be used to re-derive the coefficients for the discretization schemes discussed in the manuscript;
+ - `data` : A folder containing the data obtained from major simulations of the manuscript, divided in several per-figure folders. In particular:
+    - Figure 2: The data to compare the SNR of different fidelity estimators;
+    - Figure 3: The data to compare the SNR of different gradient estimators;
+    - Figure 7: The states obtained by p-tVMC calculations on the 10x10 lattice. Those can be loaded by running ``nqxpack.load("path/to/file.nk")``;
+ - `packages` : The codes used for our simulations, discussed below. You can install the package `ptvmc` as well as some other internal requirements by following the instructions below.
+ - `examples` : Some example code to run some fast (few minutes) calculations on a 3x3 lattice, some longer-running calculations on a 6x6 lattice (few hours) and which have the same hyperparameters we used for our large 10x10 calculations.
+
 ## Installation
 This package is not registered on PyPi, so you must install it directly from GitHub. To do so, you can run the following command:
 ```bash
