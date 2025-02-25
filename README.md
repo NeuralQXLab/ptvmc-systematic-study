@@ -15,12 +15,13 @@ pip install git+https://github.com/NeuralQXLab/ptvmc-systematic-study
 You can also clone the repository and install the package locally by running
 ```bash
 git clone https://github.com/NeuralQXLab/ptvmc-systematic-study
-pip install -e ./netket_ptvmc
+cd ptvmc-systematic-study
+pip install -e .
 ```
 
 ## List of examples
-We provide three main examples for the moment. The most complete one is the ['TFIM dynamics'](./netket_ptvmc/examples/tfim_dynamics_3x3.py) example, which is used to produce the data in the animations above. 
-We also provide an ['example'](./netket_ptvmc/examples/state_compression.py) showing a simple code snippet to perform a single state compression. Finally we provide an ['example'](./netket_ptvmc/examples/tfim_dynamics_6x6.py) very similar to the first one, but with a larger system size and with parameters more closely resembling the ones used in the paper.
+We provide three main examples for the moment. The most complete one is the ['TFIM dynamics'](./examples/tfim_dynamics_3x3.py) example, which is used to produce the data in the animations above. 
+We also provide an ['example'](./examples/state_compression.py) showing a simple code snippet to perform a single state compression. Finally we provide an ['example'](./examples/tfim_dynamics_6x6.py) very similar to the first one, but with a larger system size and with parameters more closely resembling the ones used in the paper.
 
 
 ## Explanation of the method
@@ -113,7 +114,7 @@ is replaced by the natural gradient descent update
 \theta \to \theta - \alpha S^{-1} \nabla \mathcal{L}(\theta),
 ```
 where $S$ is the Quantum Fisher Information Matrix (QFIM) or Quantum Geometric Tensor (QGT).
-This preconditioning by the QGT is hardcoded in the [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver. 
+This preconditioning by the QGT is hardcoded in the [`InfidelityOptimizerNG`](./packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver. 
 The most basic keyword arguments that can be used to customize the preconditioning are:
 - `optimizer`: an optax optimizer object. This should always be `optax.sgd` when performing natural gradient descent.
 - `diag_shift`: It is often the case that the QFIM is ill-conditioned, leading to numerical instabilities in the optimization process. To mitigate this issue, we use Tikhnov regularization, adding a small positive shift to the diagonal of the QGT as $S \to S + \lambda \mathbb{1}$. The `diag_shift` parameter controls the value of $\lambda$.
@@ -124,7 +125,7 @@ The QGT is a square matrix of size $N_p \times N_p$, where $N_p$ is the number o
 The main challenge with NGD is the high computational cost of inverting the QGT in large-scale models where the number of parameters largely surpasses the number of samples $N_s$ ($N_p\gg N_s$). 
 At the moment, the only method enabling the use of NGD in deep architectures without approximating the curvature matrix is the tangent kernel method. This formulation requires only the inversion of the Neural Tangent Kernel (NTK) matrix, an $N_s \times N_s$ matrix, thereby shifting the computational bottleneck from $N_p$ to $N_s$.
 
-The [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver provides an implementation of the tangent kernel method. The main keyword arguments that can be used to activate/deactivate the tangent kernel method are:
+The [`InfidelityOptimizerNG`](./packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver provides an implementation of the tangent kernel method. The main keyword arguments that can be used to activate/deactivate the tangent kernel method are:
 - `use_ntk`: a boolean flag to enable the use of the tangent kernel method. We recommend using this method when the number of parameters largely surpasses the number of samples.
 - `on_the_fly`: a boolean flag to enable the on-the-fly computation of the NTK. This is useful when the number of samples and parameters is too large to store the Jacobian matrix in memory.
 
@@ -134,7 +135,7 @@ Choosing an appropriate value for the diagonal-shift $\lambda$ of the QGT or NTK
 
 Identifying an optimal value for $\lambda$ is a nontrivial problem and a standard approach with strong theoretical guarantees is not available. In the paper, we propose an extension of the Levenberg-Marquardt heuristic incorporating proportional control to smoothly and automatically adjust the value of $\lambda$ during the optimization process. 
 
-While the details of the [autotuning logic](./netket_ptvmc/packages/advanced_drivers/_src/callbacks/autodiagshift.py) can be found in the paper, its use in the [`InfidelityOptimizerNG`](./netket_ptvmc/packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver is straightforward. It is implemented as a callback function that can be passed to the driver as follows:
+While the details of the [autotuning logic](./packages/advanced_drivers/_src/callbacks/autodiagshift.py) can be found in the paper, its use in the [`InfidelityOptimizerNG`](./packages/advanced_drivers/_src/driver/ngd/driver_infidelity_ngd.py) driver is straightforward. It is implemented as a callback function that can be passed to the driver as follows:
 
 ```python
 from advanced_drivers.callbacks import PI_controller_diagshift
@@ -170,9 +171,9 @@ In this package we provide a modular structure allowing to perform a single opti
 </p>
 
 The main classes are:
-- [`AbstractStateCompression`](./netket_ptvmc/packages/ptvmc/_src/compression/abstract_compression.py): an abstract class defining the interface for a single state compression. This class is used to define the compression algorithm to be used in the optimization process.
+- [`AbstractStateCompression`](./packages/ptvmc/_src/compression/abstract_compression.py): an abstract class defining the interface for a single state compression. This class is used to define the compression algorithm to be used in the optimization process.
 
-    For the case of infidelity optimization a concretization of the abstract class is already provided in [`InfidelityCompression`](./netket_ptvmc/packages/ptvmc/_src/compression/infidelity.py).\
+    For the case of infidelity optimization a concretization of the abstract class is already provided in [`InfidelityCompression`](./packages/ptvmc/_src/compression/infidelity.py).\
 To use it, one simply does
     ```python
     compression_alg = ptvmc.compression.InfidelityCompression(
@@ -209,20 +210,20 @@ To use it, one simply does
     )
     ```
 
-- [`AbstractDiscretization`](./netket_ptvmc/packages/ptvmc/_src/solver/base.py): an abstract class defining the interface for a single timestep. This class is used to define the sequence of compressions making up a physical timestep.
+- [`AbstractDiscretization`](./packages/ptvmc/_src/solver/base.py): an abstract class defining the interface for a single timestep. This class is used to define the sequence of compressions making up a physical timestep.
 
-    We provide a ready-to-use concretization of the general [`AbstractDiscretization`](./netket_ptvmc/packages/ptvmc/_src/solver/base.py) class implementing all product expansions schemes detailed above. They can be simply called as
+    We provide a ready-to-use concretization of the general [`AbstractDiscretization`](./packages/ptvmc/_src/solver/base.py) class implementing all product expansions schemes detailed above. They can be simply called as
     ```python
     solver = ptvmc.solver.SPPE3()
     ```
     These solvers allow looping over the sequence of compressions defining a physical timestep. 
     While this class defines the structure of the discretization scheme, it does not execute the compressions.
-    This can be performed by calling the `step` method of the [`Integrator`](./netket_ptvmc/packages/ptvmc/_src/integrator/integrator.py) class which takes as input the compression algorithm, and the solver. 
+    This can be performed by calling the `step` method of the [`Integrator`](./packages/ptvmc/_src/integrator/integrator.py) class which takes as input the compression algorithm, and the solver. 
 
-- [`Integrator`](./netket_ptvmc/packages/ptvmc/_src/integrator/integrator.py): a class that takes care of a single step of time evolution. It takes as input the compression algorithm and the solver and performs a cycle over the different stages of the discretization algorithms.
+- [`Integrator`](./packages/ptvmc/_src/integrator/integrator.py): a class that takes care of a single step of time evolution. It takes as input the compression algorithm and the solver and performs a cycle over the different stages of the discretization algorithms.
 
 
-- [`PTVMCDriver`](./netket_ptvmc/packages/ptvmc/_src/driver/ptvmc_driver.py): a class that takes care of the full time evolution. It takes as input the generator of the dynamics, the initial time, the solver, the compression algorithm, and the initial variational state. It then performs the full time evolution of the system looping over the single timesteps (loops over the [`Integrator`](./netket_ptvmc/packages/ptvmc/_src/integrator/integrator.py) class). 
+- [`PTVMCDriver`](./packages/ptvmc/_src/driver/ptvmc_driver.py): a class that takes care of the full time evolution. It takes as input the generator of the dynamics, the initial time, the solver, the compression algorithm, and the initial variational state. It then performs the full time evolution of the system looping over the single timesteps (loops over the [`Integrator`](./packages/ptvmc/_src/integrator/integrator.py) class). 
 
     The full time evolution can be performed as follows:
     ```python

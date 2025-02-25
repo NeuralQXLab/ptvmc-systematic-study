@@ -11,4 +11,4 @@ repos:
     hooks:
     - id: black
       # force exclude netket_pro/_src/external
-      args: [--config=./netket_ptvmc/pyproject.toml, --force-exclude=netket_pro/_src/external]
+      args: [--config=./pyproject.toml, --force-exclude=packages/netket_pro/_src/external]
