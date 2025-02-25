@@ -40,6 +40,7 @@ ha += sum([-h * sigmax(hi, i) for i in g.nodes()])
 # LogState Spin Machine
 ma = nk.models.LogStateVector(hilbert=hi)
 # nk.models.RBM(alpha=5, use_visible_bias=True, param_dtype=complex)
+ma = ptvmc.nn.DiagonalWrapper(ma, param_dtype=complex)
 
 # Monte Carlo Sampling
 sa = nk.sampler.ExactSampler(
