@@ -1,3 +1,8 @@
+import os
+
+# Get the directory where this script is located
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 import netket as nk
 import matplotlib.pyplot as plt
 
@@ -83,4 +88,4 @@ ax.plot(infidelity, 'o-')
 ax.set_yscale('log')
 ax.set_xlabel('Iteration')
 ax.set_ylabel('Infidelity')
-fig.savefig("infidelity.pdf", bbox_inches="tight")
+fig.savefig(os.path.join(_SCRIPT_DIR, "infidelity.pdf"), bbox_inches="tight")

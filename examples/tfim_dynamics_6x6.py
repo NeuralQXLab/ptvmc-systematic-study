@@ -1,6 +1,9 @@
 import os
 os.environ["JAX_PLATFORM_NAME"] = "gpu"
 
+# Get the directory where this script is located
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 import ptvmc
 
 import advanced_drivers as advd
@@ -41,7 +44,7 @@ def plot_fn(logger):
     ax[0].set_xlim(-0.04, T*1.05)
     ax[1].set_xlim(-0.04, T*1.05)
     
-    fig.savefig("Mx_dynamic.pdf", bbox_inches="tight")
+    fig.savefig(os.path.join(_SCRIPT_DIR, "Mx_dynamic.pdf"), bbox_inches="tight")
     plt.close(fig)
 
 # 2D Lattice
@@ -169,6 +172,6 @@ callback = [
     obs={"mx": mx},
     obs_in_fullsum=False,
     callback=callback,
-    save_path="states/",
+    save_path=os.path.join(_SCRIPT_DIR, "states/"),
     save_every=1,
 )

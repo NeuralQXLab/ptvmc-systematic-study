@@ -5,7 +5,6 @@ __pycache__/
 
 # C extensions
 *.so
-uv.lock
 
 # Distribution / packaging
 netket_pro/_version.py
@@ -144,3 +143,8 @@ dmypy.json
 docs/_build
 _generated
 dist
+.venv/
+
+# Example outputs
+examples/*.pdf
+examples/states/

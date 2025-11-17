@@ -10,8 +10,12 @@ from jax.experimental import multihost_utils
 from netket import config as nkconfig
 from netket import jax as nkjax
 from netket.utils import mpi
+from netket.utils import module_version
 from jax.lax import with_sharding_constraint
-from jax.sharding import PositionalSharding
+
+if module_version("jax") >= (0, 7, 0):
+    from jax.sharding import NamedSharding
+    from jax.sharding import PartitionSpec as P
 
 
 @lru_cache
@@ -143,11 +147,7 @@ def shard_replicated(array, *, axis=0):
             # Do not use process_count() because we could have more than
             # 1 GPU per process
 
-            sharding_shape = [1 for _ in range(array.ndim)]
-            sharding_shape[axis] = len(jax.devices())
-            sharding = jax.sharding.PositionalSharding(jax.devices()).reshape(
-                sharding_shape
-            )
+            sharding = sharding_along_axis(array, axis=axis)
             array = jax.lax.with_sharding_constraint(array, sharding)
         elif mode() == "mpi":
             lenght_per_proc = lenght // mpi.n_nodes
@@ -180,9 +180,15 @@ def declare_replicated_array(x):
         An array with the same shape as the input, but declared as replicated.
     """
     if mode() == "sharding" and process_count() == device_count():
-        par_sharding = jax.sharding.PositionalSharding(jax.devices()).replicate()
-
-        return jax.make_array_from_single_device_arrays(x.shape, par_sharding, [x])
+        # For JAX 0.7+, we can't use make_array_from_single_device_arrays with NamedSharding
+        # that has AbstractMesh. In single-device case, just return the array.
+        if module_version("jax") >= (0, 7, 0):
+            # Single device case - array is already replicated
+            return x
+        else:
+            from jax.sharding import PositionalSharding
+            par_sharding = PositionalSharding(jax.devices()).replicate()
+            return jax.make_array_from_single_device_arrays(x.shape, par_sharding, [x])
     else:
         return x
 
@@ -222,8 +228,7 @@ def allgather(array, *, axis: int = 0, token=None):
         array, token = mpi.mpi_allgather_jax(array, token=token)
         array = jax.lax.collapse(array, 0, 2)
     elif mode() == "sharding":
-        sharding = PositionalSharding(jax.devices()).replicate()
-        sharding = sharding.reshape(tuple(1 for _ in range(array.ndim)))
+        sharding = replicate_sharding()
         array = jax.lax.with_sharding_constraint(array, sharding)
     else:
         pass
@@ -333,10 +338,7 @@ def reshard(
     elif mode() == "sharding":
         del sharded_axis  # unused
 
-        sharding = PositionalSharding(jax.devices())
-        sharding_shape = list(1 for _ in range(array.ndim))
-        sharding_shape[out_sharded_axis] = -1
-        sharding = sharding.reshape(sharding_shape)
+        sharding = sharding_along_axis(array, axis=out_sharded_axis)
         array = with_sharding_constraint(array, sharding)
     return array, token
 
@@ -361,3 +363,56 @@ def _inspect(name: str, x: jax.Array):
                 )
 
         jax.debug.inspect_array_sharding(x, callback=_cb)
+
+
+# TODO: Remove this fucntion when we require jax 0.7
+def replicate_sharding():
+    """
+    Create a replicated sharding that works with both old and new JAX versions.
+    """
+    if module_version("jax") >= (0, 7, 0):
+        return NamedSharding(jax.sharding.get_abstract_mesh(), P())
+    else:
+        from jax.sharding import PositionalSharding
+
+        return PositionalSharding(jax.devices()).replicate()
+
+
+# TODO: Remove this fucntion when we require jax 0.7
+def sharding_with_shape(shape):
+    """
+    Create a sharding with a specific shape that works with both old and new JAX versions.
+
+    Args:
+        shape: A tuple/list where:
+               - -1 indicates sharding across devices
+               - 1 indicates replication
+    """
+    if module_version("jax") >= (0, 7, 0):
+        spec_parts = []
+        for dim in shape:
+            if dim == -1 or (isinstance(dim, int) and dim > 1):
+                spec_parts.append("S")
+            elif dim == 1:
+                spec_parts.append(None)
+            else:
+                raise ValueError(
+                    f"Unsupported sharding dimension: {dim}. Use -1 or positive integer for sharding, 1 for replication."
+                )
+        while spec_parts and spec_parts[-1] is None:
+            spec_parts.pop()
+        return NamedSharding(jax.sharding.get_abstract_mesh(), P(*spec_parts))
+    else:
+        from jax.sharding import PositionalSharding
+
+        return PositionalSharding(jax.devices()).reshape(shape)
+
+
+# TODO: Remove this fucntion when we require jax 0.7
+def sharding_along_axis(array, *, axis):
+    """
+    Create a sharding that shards along a specific axis and replicates along all others.
+    """
+    shape = [1] * array.ndim
+    shape[axis] = -1
+    return sharding_with_shape(shape)

@@ -1,6 +1,9 @@
 import os
 os.environ["JAX_PLATFORM_NAME"] = "cpu"
 
+# Get the directory where this script is located
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 import qutip as qt
 import numpy as np
 import ptvmc
@@ -112,7 +115,7 @@ def plot_fn(logger):
     ax[1].set_xlim(-0.04*h, h*T*1.05)
     ax[1].set_ylim(1e-12, 1e-6)
     
-    fig.savefig("Mx_dynamic.pdf", bbox_inches="tight")
+    fig.savefig(os.path.join(_SCRIPT_DIR, "Mx_dynamic.pdf"), bbox_inches="tight")
     plt.close(fig)
 
 # Define compression algorithm
@@ -178,6 +181,6 @@ callback = [
     obs={"mx": mx},
     obs_in_fullsum=True,
     callback=callback,
-    save_path="states/",
+    save_path=os.path.join(_SCRIPT_DIR, "states/"),
     save_every=1,
 )

@@ -19,6 +19,34 @@ This repository contains the following things:
  - `examples` : Some example code to run some fast (few minutes) calculations on a 3x3 lattice, some longer-running calculations on a 6x6 lattice (few hours) and which have the same hyperparameters we used for our large 10x10 calculations.
 
 ## Installation
+
+### Using uv (Recommended)
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management, which ensures exact reproducibility of the environment.
+
+1. Install uv:
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+2. Clone and set up the environment:
+```bash
+git clone https://github.com/NeuralQXLab/ptvmc-systematic-study
+cd ptvmc-systematic-study
+uv sync --group dev
+```
+This creates a `.venv` directory with all dependencies locked to exact versions.
+
+3. Run scripts:
+```bash
+# Using uv run (no activation needed)
+uv run python examples/tfim_dynamics_3x3.py
+
+# Or activate the environment
+source .venv/bin/activate
+python examples/tfim_dynamics_3x3.py
+```
+
+### Using pip
 This package is not registered on PyPi, so you must install it directly from GitHub. To do so, you can run the following command:
 ```bash
 pip install git+https://github.com/NeuralQXLab/ptvmc-systematic-study
