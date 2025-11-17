@@ -11,9 +11,10 @@ authors = [
     { name = "Filippo Vicentini" },
     { name = "The NQX Lab of Ecole Polytechnique" },
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "netket>=3.15.0",
+    "netket @ git+https://github.com/netket/netket.git@6fb0e3cfb",
+    "jax>=0.5.0",  # Required for jax.extend.core support (used in neural_tangents imports)
     "numba>=0.59",
     "einops>=0.6",
     "sparse>=0.15", #This is required to serialize types from Hydra config files
