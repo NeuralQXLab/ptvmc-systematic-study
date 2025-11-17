@@ -27,7 +27,7 @@ from ptvmc._src.callbacks.logapply import DynamicLogApply as LogApply
 
 
 # 2D Lattice
-L = 3
+L = 2
 g = nk.graph.Hypercube(length=L, n_dim=2, pbc=True)
 
 # Hilbert space of spins on the graph
@@ -104,9 +104,19 @@ def plot_fn(logger):
     ax[0].legend(ncol=3, loc=(-0.014,1.02), )
     
     color = ["#5DC350", "#986746"]
-    final_infidelities = logger.data['Infidelity']['Mean']['value']['value'].real[:, :, -1]
-    for i in range(final_infidelities.shape[1]):
-        ax[1].plot(h * times_var, final_infidelities[:, i], "o-", c=color[i],  ms=6, label=f"stage {i}", markeredgecolor="k", markeredgewidth=0.4,)
+    # Access infidelity data from History2D structure
+    infidelity_data = logger.data['Infidelity']
+    if hasattr(infidelity_data, 'values'):
+        # History2D structure: access the Mean values array directly
+        # Shape is (n_timesteps, n_optimizer_iters)
+        final_infidelities = infidelity_data['Mean'].real[:, -1]
+        # Plot single line for final infidelity at each timestep
+        ax[1].plot(h * times_var, final_infidelities, "o-", c=color[0], ms=6, label="final", markeredgecolor="k", markeredgewidth=0.4,)
+    else:
+        # Legacy dict structure
+        final_infidelities = infidelity_data['Mean']['value']['value'].real[:, :, -1]
+        for i in range(final_infidelities.shape[1]):
+            ax[1].plot(h * times_var, final_infidelities[:, i], "o-", c=color[i],  ms=6, label=f"stage {i}", markeredgecolor="k", markeredgewidth=0.4,)
     ax[1].set_yscale("log")    
     ax[1].set_ylabel(r"$\mathcal{I}$")
     ax[1].set_xlabel(r"$ht$")
@@ -135,7 +145,7 @@ compression_alg = ptvmc.compression.InfidelityCompression(
         "estimator": "cmc",
     },
     run_parameters={
-        "n_iter": 50,
+        "n_iter": 250,
         "callback": [
             PI_controller_diagshift(
                 target=0.9,
