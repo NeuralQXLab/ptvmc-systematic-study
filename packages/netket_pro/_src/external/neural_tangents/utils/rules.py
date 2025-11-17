@@ -20,15 +20,31 @@ from typing import Any, Callable, Optional, Union
 import jax
 from jax import lax
 from jax.core import AbstractValue
-from jax.core import Jaxpr
-from jax.core import JaxprEqn
-from jax.core import Literal
-from jax.core import Primitive
+#from jax.core import Jaxpr
+#from jax.core import JaxprEqn
+#from jax.core import Literal
+#from jax.core import Primitive
 from jax.core import ShapedArray
-from jax.core import Var
+#from jax.core import Var
 from jax.interpreters import ad
 import jax.numpy as jnp
 import numpy as np
+
+## EDIT
+from netket.utils.version_check import module_version
+if module_version("jax") < (0,5,0):
+  from jax.core import Jaxpr
+  from jax.core import JaxprEqn
+  from jax.core import Literal
+  from jax.core import Primitive
+  from jax.core import Var
+else:
+  from jax.extend.core import Jaxpr
+  from jax.extend.core import JaxprEqn
+  from jax.extend.core import Literal
+  from jax.extend.core import Primitive
+  from jax.extend.core import Var
+## / END EDIT
 
 from . import utils
 from .dataclasses import dataclass

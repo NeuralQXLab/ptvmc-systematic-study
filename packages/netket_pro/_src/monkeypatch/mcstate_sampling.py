@@ -359,7 +359,7 @@ def replace_sampler_seed(self, seed: Optional[int] = None):
     in order to decorrelate the chains, because this method only changes the rng seed, but not
     the current configurations in the chain.
     """
-    seed = nkjax.mpi_split(nkjax.PRNGKey(seed))
+    seed = nkjax.PRNGKey(seed)
 
     n_samplers = 1 + len(self.sampler_states.keys())
     seeds = jax.random.split(seed, n_samplers)

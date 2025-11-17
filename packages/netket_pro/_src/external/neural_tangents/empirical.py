@@ -107,8 +107,9 @@ import operator
 from typing import Callable, Iterable, KeysView, Optional, TypeVar, Union
 import warnings
 
+## EDIT
 import jax
-from jax import core
+#from jax import core
 from jax import eval_shape
 from jax import jacobian
 from jax import jvp
@@ -117,12 +118,27 @@ from jax import linear_transpose
 from jax import vjp
 from jax import vmap
 
-from jax.core import Jaxpr
-from jax.core import JaxprEqn
-from jax.core import Literal
 from jax.core import ShapedArray
 from jax.core import Value
-from jax.core import Var
+
+from netket.utils.version_check import module_version
+if module_version("jax") < (0,5,0):
+  from jax import core
+  from jax.core import Jaxpr
+  from jax.core import JaxprEqn
+  from jax.core import Literal
+  from jax.core import Var
+else:
+  from jax.extend import core
+  from jax.extend.core import Jaxpr
+  from jax.extend.core import JaxprEqn
+  from jax.extend.core import Literal
+  from jax.extend.core import Var
+if module_version("jax") < (0, 7, 0):
+  from jax.util import safe_map as map
+else:
+  from netket.utils.iterators import safe_map as map
+## / END EDIT
 
 from jax.extend import linear_util as lu
 from jax.extend import source_info_util
@@ -139,8 +155,7 @@ from jax.tree_util import tree_reduce
 from jax.tree_util import tree_structure
 from jax.tree_util import tree_transpose
 from jax.tree_util import tree_unflatten
-from jax.util import safe_map as map
-from jax.util import safe_zip as zip
+from jax._src.util import safe_zip as zip
 
 import numpy as np
 

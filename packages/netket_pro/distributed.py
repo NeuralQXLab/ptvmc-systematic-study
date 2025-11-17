@@ -15,3 +15,6 @@ from netket_pro._src.distributed import _inspect as _inspect
 from netket_pro._src.distributed import (
     declare_replicated_array as declare_replicated_array,
 )
+from netket_pro._src.distributed import replicate_sharding as replicate_sharding
+from netket_pro._src.distributed import sharding_with_shape as sharding_with_shape
+from netket_pro._src.distributed import sharding_along_axis as sharding_along_axis
